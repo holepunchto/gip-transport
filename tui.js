@@ -1,5 +1,6 @@
 const { header, summary, command, validate, arg } = require('paparam')
 const { GipLocalDB } = require('./lib/db')
+const Id = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
 const process = require('process')
 
@@ -69,6 +70,22 @@ const seedRemotes = command(
         console.log('Peer connected to', name)
       })
     }
+  }
+)
+
+// --- ID ---
+
+const idCmd = command(
+  'id',
+  header('Show your public key'),
+  summary('Print your public key for sharing with blind peers'),
+  async () => {
+    await db.ready()
+
+    const publicKey = await db.getPublicKey()
+    console.log(Id.encode(publicKey))
+
+    await db.close()
   }
 )
 
@@ -186,6 +203,7 @@ const cmd = command(
   newRepo,
   listRepos,
   seedRemotes,
+  idCmd,
   configCmd,
   () => console.log(cmd.help())
 )
