@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "schema": [
     {
       "name": "repos",
@@ -30,6 +30,20 @@
           "required": false,
           "type": "uint",
           "version": 1
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "namespace": "gip",
+      "compact": true,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "blindPeers",
+          "array": true,
+          "type": "fixed32",
+          "version": 2
         }
       ]
     }

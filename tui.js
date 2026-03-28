@@ -4,6 +4,7 @@ const goodbye = require('graceful-goodbye')
 const process = require('process')
 
 const green = (text) => `\x1b[32m${text}\x1b[0m`
+const dim = (text) => `\x1b[2m${text}\x1b[0m`
 
 const db = new GipLocalDB()
 
@@ -16,7 +17,7 @@ const regexRepoName = /^[a-zA-Z0-9_-]+$/
 const newRepo = command(
   'new',
   header('Create a new repository'),
-  summary('Create a new Git repository using Gip'),
+  summary('Create a new Git repository'),
   arg('name', 'Name of the repository'),
   validate(
     ({ args }) => args.name && regexRepoName.test(args.name),
@@ -26,7 +27,6 @@ const newRepo = command(
     await db.ready()
 
     const name = newRepo.args.name
-
     const remote = await db.createRemote(name)
 
     console.log(`Repository ${green(name)} created ${remote.url}`)
@@ -72,6 +72,113 @@ const seedRemotes = command(
   }
 )
 
+// --- Config ---
+
+const configGet = command(
+  'get',
+  header('Get a config value'),
+  summary('Get the value of a config key'),
+  arg('key', 'Config key (e.g. blind-peers)'),
+  validate(({ args }) => !!args.key, 'Key is required'),
+  async () => {
+    await db.ready()
+
+    const key = configGet.args.key
+
+    if (key === 'blind-peers') {
+      const peers = await db.getBlindPeers()
+      if (peers.length === 0) {
+        console.log(dim('(not set)'))
+      } else {
+        for (const peer of peers) console.log(peer)
+      }
+    } else {
+      console.error(`Unknown config key: ${key}`)
+    }
+
+    await db.close()
+  }
+)
+
+const configAdd = command(
+  'add',
+  header('Add to a config list'),
+  summary('Add a value to a list config key (e.g. blind-peers)'),
+  arg('key', 'Config key'),
+  arg('value', 'Value to add'),
+  validate(({ args }) => args.key && args.value, 'Key and value are required'),
+  async () => {
+    await db.ready()
+
+    const key = configAdd.args.key
+    const value = configAdd.args.value
+
+    if (key === 'blind-peers') {
+      await db.addBlindPeer(value)
+      console.log(`Added to ${green(key)}`)
+    } else {
+      console.error(`Unknown config key: ${key}`)
+    }
+
+    await db.close()
+  }
+)
+
+const configRemove = command(
+  'remove',
+  header('Remove from a config list'),
+  summary('Remove a value from a list config key'),
+  arg('key', 'Config key'),
+  arg('value', 'Value to remove'),
+  validate(({ args }) => args.key && args.value, 'Key and value are required'),
+  async () => {
+    await db.ready()
+
+    const key = configRemove.args.key
+    const value = configRemove.args.value
+
+    if (key === 'blind-peers') {
+      const removed = await db.removeBlindPeer(value)
+      if (removed) {
+        console.log(`Removed from ${green(key)}`)
+      } else {
+        console.log(dim('Value not found'))
+      }
+    } else {
+      console.error(`Unknown config key: ${key}`)
+    }
+
+    await db.close()
+  }
+)
+
+const configCmd = command(
+  'config',
+  header('Manage configuration'),
+  summary('Get and set config values'),
+  configGet,
+  configAdd,
+  configRemove,
+  async () => {
+    await db.ready()
+
+    const peers = await db.getBlindPeers()
+
+    if (peers.length === 0) {
+      console.log(dim('No config set'))
+      await db.close()
+      return
+    }
+
+    console.log(`${green('blind-peers')}:`)
+    for (const peer of peers) console.log(`  ${peer}`)
+
+    await db.close()
+  }
+)
+
+// --- Root ---
+
 const cmd = command(
   'gip',
   header('Git Remote the P2P way'),
@@ -79,6 +186,7 @@ const cmd = command(
   newRepo,
   listRepos,
   seedRemotes,
+  configCmd,
   () => console.log(cmd.help())
 )
 

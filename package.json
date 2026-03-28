@@ -4,7 +4,8 @@
   "description": "Git remote helper for P2P remotes — no server, just peers.",
   "bin": {
     "git-remote-git+pear": "bin.js",
-    "git-pear": "bin-tui.js"
+    "git-pear": "bin-tui.js",
+    "gip": "bin-tui.js"
   },
   "scripts": {
     "test": "brittle-bare test/all.js",
