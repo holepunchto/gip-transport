@@ -62,14 +62,44 @@ const seedRemotes = command(
   async () => {
     await db.ready()
 
+    const publicKey = await db.getPublicKey()
     const remotes = await db.openRemotes()
-    for (const [name, remote] of remotes) {
-      console.log(`Seeding ${green(name)}...`)
 
-      remote.on('connection', () => {
-        console.log('Peer connected to', name)
+    if (remotes.size === 0) {
+      console.log(dim('No repositories to seed'))
+      await db.close()
+      return
+    }
+
+    console.log(`${green('Seeding')} — Public key: ${Id.encode(publicKey)}`)
+    console.log()
+
+    for (const [name, remote] of remotes) {
+      console.log(`  ${green(name)} — ${remote.core.length} blocks`)
+    }
+
+    console.log()
+
+    db.swarm.on('connection', (conn) => {
+      const key = Id.encode(conn.remotePublicKey).slice(0, 8)
+      console.log(`${green('+')} Peer connected ${dim(key)}`)
+    })
+
+    for (const [name, remote] of remotes) {
+      remote.core.on('upload', (index, bytes, from) => {
+        const key = Id.encode(from.remotePublicKey).slice(0, 8)
+        console.log(`  ${green('↑')} ${name} block ${index} → ${dim(key)}`)
+      })
+
+      remote.core.on('download', (index, bytes, from) => {
+        const key = Id.encode(from.remotePublicKey).slice(0, 8)
+        console.log(`  ${green('↓')} ${name} block ${index} ← ${dim(key)}`)
       })
     }
+
+    goodbye(async () => {
+      await db.close()
+    })
   }
 )
 
