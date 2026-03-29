@@ -3,6 +3,12 @@ const process = require('process')
 const { Gip } = require('./lib/gip.js')
 const { createStdinLineReader } = require('./lib/stdin')
 
+const ignorePipeError = (err) => {
+  if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
+}
+if (process.stdin.on) process.stdin.on('error', ignorePipeError)
+if (process.stdout.on) process.stdout.on('error', ignorePipeError)
+
 const argv = process.argv.slice(0)
 // args[0] == node
 // args[1] == git-remote-gip location
