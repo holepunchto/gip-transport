@@ -1,4 +1,3 @@
-const readline = require('readline')
 const goodbye = require('graceful-goodbye')
 const process = require('process')
 const { Gip } = require('./lib/gip.js')
@@ -37,9 +36,20 @@ const capabilities = () => {
   process.stdout.write('option\nfetch\npush\nlist\n\n')
 }
 
-const main = async () => {
-  const crlfDelay = 30000
+async function * readLines () {
+  let buffer = ''
+  for await (const chunk of process.stdin) {
+    buffer += typeof chunk === 'string' ? chunk : chunk.toString()
+    let idx
+    while ((idx = buffer.indexOf('\n')) !== -1) {
+      yield buffer.slice(0, idx).replace(/\r$/, '')
+      buffer = buffer.slice(idx + 1)
+    }
+  }
+  if (buffer) yield buffer
+}
 
+const main = async () => {
   const gip = new Gip({
     remote,
     ...config
@@ -56,10 +66,7 @@ const main = async () => {
   gip._progressReporter.connected(gip.remote)
 
   try {
-    for await (const line of readline.createInterface({
-      input: process.stdin,
-      crlfDelay
-    })) {
+    for await (const line of readLines()) {
       const command = line.split(' ')[0]
       gip._verbose('Line: ' + line)
 

@@ -60,10 +60,6 @@
       "bare": "bare-process",
       "default": "process"
     },
-    "readline": {
-      "bare": "bare-readline",
-      "default": "readline"
-    },
     "tty": {
       "bare": "bare-tty",
       "default": "tty"
@@ -80,7 +76,6 @@
     "bare-os": "^3.6.1",
     "bare-path": "^3.0.0",
     "bare-process": "^4.2.1",
-    "bare-readline": "^1.0.9",
     "bare-spinner": "^1.0.2",
     "bare-storage": "^1.1.0",
     "bare-string-decoder": "^1.0.0",
