@@ -1,7 +1,7 @@
 const goodbye = require('graceful-goodbye')
 const process = require('process')
+const readline = require('readline')
 const { Gip } = require('./lib/gip.js')
-const { createStdinLineReader } = require('./lib/stdin')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
@@ -55,18 +55,15 @@ const main = async () => {
 
   gip.setProgress(true)
 
-  // Set up stdin reader BEFORE gip.ready() — git sends commands immediately
-  // and data must be captured while we connect (which can take seconds/minutes)
-  const readLine = createStdinLineReader()
-
   gip._progressReporter.connecting()
   await gip.ready()
 
   gip._progressReporter.connected(gip.remote)
 
+  const rl = readline.createInterface({ input: process.stdin })
+
   try {
-    let line
-    while ((line = await readLine()) !== null) {
+    for await (const line of rl) {
       const command = line.split(' ')[0]
       gip._verbose('Line: ' + line)
 
