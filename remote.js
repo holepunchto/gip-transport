@@ -55,12 +55,14 @@ const main = async () => {
 
   gip.setProgress(true)
 
+  // Set up stdin reader BEFORE gip.ready() — git sends commands immediately
+  // and data must be captured while we connect (which can take seconds/minutes)
+  const readLine = createStdinLineReader()
+
   gip._progressReporter.connecting()
   await gip.ready()
 
   gip._progressReporter.connected(gip.remote)
-
-  const readLine = createStdinLineReader()
 
   try {
     let line

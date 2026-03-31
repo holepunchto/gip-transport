@@ -9,6 +9,19 @@ const dim = (text) => `\x1b[2m${text}\x1b[0m`
 
 const regexRepoName = /^[a-zA-Z0-9_-]+$/
 
+async function setup(readonly = false) {
+  try {
+    db = new GipLocalDB({ readonly })
+    await db.ready()
+    return db
+  } catch (e) {
+    if (e.message.endsWith('No such file or directory') && readonly) {
+      return setup()
+    }
+    throw e
+  }
+}
+
 const newRepo = command(
   'new',
   header('Create a new repository'),
@@ -19,8 +32,7 @@ const newRepo = command(
     'Invalid repository name. Support alphanumeric characters, underscores, and hyphens.'
   ),
   async () => {
-    const db = new GipLocalDB()
-    await db.ready()
+    const db = await setup()
 
     const name = newRepo.args.name
     const remote = await db.createRemote(name)
@@ -36,8 +48,12 @@ const listRepos = command(
   header('List repositories'),
   summary('List all your available Git repositories'),
   async () => {
-    const db = new GipLocalDB({ readonly: true })
-    await db.ready()
+    const db = await setup(true)
+
+    if (db.core.length === 0) {
+      await db.close()
+      return
+    }
 
     const remotes = await db.openRemotes()
     for (const [name, remote] of remotes) {
@@ -56,8 +72,11 @@ const seedRemotes = command(
   header('Seed repositories'),
   summary('Seed all your available Git repositories'),
   async () => {
-    const db = new GipLocalDB({ readonly: true })
-    await db.ready()
+    const db = await setup(true)
+
+    goodbye(async () => {
+      await db.close()
+    })
 
     const publicKey = await db.getPublicKey()
     const remotes = await db.openRemotes()
@@ -93,10 +112,6 @@ const seedRemotes = command(
         console.log(`  ${green('↓')} ${name} block ${index} ← ${dim(key)}`)
       })
     }
-
-    goodbye(async () => {
-      await db.close()
-    })
   }
 )
 
@@ -107,8 +122,7 @@ const idCmd = command(
   header('Show your public key'),
   summary('Print your public key for sharing with blind peers'),
   async () => {
-    const db = new GipLocalDB({ readonly: true })
-    await db.ready()
+    const db = await setup(true)
 
     const publicKey = await db.getPublicKey()
     console.log(Id.encode(publicKey))
@@ -126,8 +140,7 @@ const configGet = command(
   arg('key', 'Config key (e.g. blind-peers)'),
   validate(({ args }) => !!args.key, 'Key is required'),
   async () => {
-    const db = new GipLocalDB({ readonly: true })
-    await db.ready()
+    const db = await setup(true)
 
     const key = configGet.args.key
 
@@ -154,7 +167,7 @@ const configAdd = command(
   arg('value', 'Value to add'),
   validate(({ args }) => args.key && args.value, 'Key and value are required'),
   async () => {
-    await db.ready()
+    const db = await setup()
 
     const key = configAdd.args.key
     const value = configAdd.args.value
@@ -178,7 +191,7 @@ const configRemove = command(
   arg('value', 'Value to remove'),
   validate(({ args }) => args.key && args.value, 'Key and value are required'),
   async () => {
-    await db.ready()
+    const db = await setup()
 
     const key = configRemove.args.key
     const value = configRemove.args.value
@@ -206,8 +219,7 @@ const configCmd = command(
   configAdd,
   configRemove,
   async () => {
-    const db = new GipLocalDB({ readonly: true })
-    await db.ready()
+    const db = await setup(true)
 
     const peers = await db.getBlindPeers()
 
