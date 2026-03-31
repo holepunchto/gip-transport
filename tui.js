@@ -50,7 +50,7 @@ const listRepos = command(
   async () => {
     const db = await setup(true)
 
-    if (db.core.length === 0) {
+    if (db._db.core.length === 0) {
       await db.close()
       return
     }
