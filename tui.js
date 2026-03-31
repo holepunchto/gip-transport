@@ -11,7 +11,7 @@ const regexRepoName = /^[a-zA-Z0-9_-]+$/
 
 async function setup(readonly = false) {
   try {
-    db = new GipLocalDB({ readonly })
+    const db = new GipLocalDB({ readonly })
     await db.ready()
     return db
   } catch (e) {
@@ -72,7 +72,7 @@ const seedRemotes = command(
   header('Seed repositories'),
   summary('Seed all your available Git repositories'),
   async () => {
-    const db = await setup(true)
+    const db = await setup()
 
     goodbye(async () => {
       await db.close()
