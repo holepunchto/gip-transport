@@ -11,7 +11,6 @@
     "test": "brittle-bare test/all.js",
     "format": "prettier . --write",
     "lint": "lunte && prettier . --check",
-    "schema": "node gip-remote/schema/build.js",
     "dev": "npm run clean && npm run build && ./out/darwin-arm64/git-pear.app/Contents/MacOS/git-pear",
     "build": "bare-build --out out/darwin-arm64 --host darwin-arm64 --name git-pear --runtime bare-native/runtime gui/app.js",
     "build:android": "bare-build --out out/android-arm64 --host android-arm64 --identifier io.pear.git --name GitPear --runtime bare-native/runtime gui/app.js",

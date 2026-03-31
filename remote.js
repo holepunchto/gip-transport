@@ -57,6 +57,7 @@ const main = async () => {
 
   gip._progressReporter.connecting()
   await gip.ready()
+
   gip._progressReporter.connected(gip.remote)
 
   const readLine = createStdinLineReader()
@@ -121,6 +122,8 @@ const main = async () => {
           console.error('Unexpected message:', line)
       }
     }
+  } catch (e) {
+    gip._error(e)
   } finally {
     gip._debug('Closing gip')
     await gip.close()
