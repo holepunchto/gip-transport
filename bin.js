@@ -123,7 +123,7 @@ const main = async () => {
       }
     }
   } catch (e) {
-    gip._error(e)
+    console.error(e.message)
   } finally {
     gip._debug('Closing gip')
     await gip.close()
