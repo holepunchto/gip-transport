@@ -45,85 +45,89 @@ const capabilities = () => {
   process.stdout.write('option\nfetch\npush\nlist\n\n')
 }
 
-const rl = readline.createInterface({ input: process.stdin })
-const gip = new Gip({
-  remote,
-  ...config
-})
+const main = async () => {
+  const gip = new Gip({
+    remote,
+    ...config
+  })
 
-const teardown = () => {
-  gip._debug('Closing gip')
-  gip.close()
-  rl.close()
-}
+  goodbye(async () => {
+    await gip.close()
+  })
 
-goodbye(teardown)
+  gip.setProgress(true)
+  gip.ready()
 
-gip.setProgress(true)
-gip.ready()
+  const rl = readline.createInterface({ input: process.stdin })
 
-rl.on('close', teardown)
-rl.on('line', async (line) => {
   try {
-    if (!gip.opened) await gip.ready()
+    for await (const line of rl) {
+      if (!gip.opened) await gip.ready()
 
-    const command = line.split(' ')[0]
-    gip._verbose('Line: ' + line)
+      const command = line.split(' ')[0]
+      gip._verbose('Line: ' + line)
 
-    switch (command) {
-      case 'capabilities':
-        capabilities()
-        break
-      case 'option':
-        {
-          const option = line.split(' ')[1]
-          switch (option) {
-            case 'verbosity':
-              gip.setVerbosity(line.split(' ')[2])
-              break
-            case 'progress':
-              gip.setProgress(line.split(' ')[2] === 'true')
-              break
-            case 'cloning':
-              gip.setCloning(line.split(' ')[2] === 'true')
-              break
-            case 'followtags':
-              gip.setFollowTags(line.split(' ')[2] === 'true')
-              break
+      switch (command) {
+        case 'capabilities':
+          capabilities()
+          break
+        case 'option':
+          {
+            const option = line.split(' ')[1]
+            switch (option) {
+              case 'verbosity':
+                gip.setVerbosity(line.split(' ')[2])
+                break
+              case 'progress':
+                gip.setProgress(line.split(' ')[2] === 'true')
+                break
+              case 'cloning':
+                gip.setCloning(line.split(' ')[2] === 'true')
+                break
+              case 'followtags':
+                gip.setFollowTags(line.split(' ')[2] === 'true')
+                break
+            }
+            process.stdout.write('ok\n')
           }
-          process.stdout.write('ok\n')
+          break
+        case 'list': {
+          if (line === 'list') {
+            await gip.listAndStoreRefs()
+          } else {
+            await gip.listForPush()
+          }
+          break
         }
-        break
-      case 'list': {
-        if (line === 'list') {
-          await gip.listAndStoreRefs()
-        } else {
-          await gip.listForPush()
+        case 'push': {
+          const ref = line.split(' ')[1]
+          await gip.addPushRefs(ref)
+          break
         }
-        break
-      }
-      case 'push': {
-        const ref = line.split(' ')[1]
-        await gip.addPushRefs(ref)
-        break
-      }
-      case 'fetch': {
-        gip.prepareFetch(line.replace('fetch ', ''))
-        break
-      }
-      case '': {
-        if (gip.hasPendingFetch()) {
-          await gip.fetch()
-        } else {
-          gip._debug('pushing')
-          await gip.push()
+        case 'fetch': {
+          gip.prepareFetch(line.replace('fetch ', ''))
+          break
         }
-        return rl.close()
+        case '': {
+          if (gip.hasPendingFetch()) {
+            await gip.fetch()
+          } else {
+            gip._debug('pushing')
+            await gip.push()
+          }
+          return
+        }
+        default:
+          console.error('Unexpected message:', line)
       }
-      default:
-        console.error('Unexpected message:', line)
     }
   } catch (e) {
     gip._error(e)
+  } finally {
+    gip._debug('Closing gip')
+    await gip.close()
+    process.exit(0)
   }
-})
+}
+
+main()

@@ -39,7 +39,7 @@ const newRepo = command(
     const name = newRepo.args.name
     const remote = await db.createRemote(name)
 
-    console.log(`Repository ${green(name)} created ${remote.url}`)
+    console.log(`Repository ${green(name)} created ${remote.url.replace('0.0.', '')}`)
 
     await db.close()
   }
