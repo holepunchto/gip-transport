@@ -69,12 +69,58 @@ const listRepos = command(
   }
 )
 
+const deleteRepo = command(
+  'delete',
+  header('Delete a repository'),
+  summary('Delete a Git repository from your local store'),
+  arg('name', 'Name of the repository to delete'),
+  validate(
+    ({ args }) => args.name && regexRepoName.test(args.name),
+    'Invalid repository name. Support alphanumeric characters, underscores, and hyphens.'
+  ),
+  async () => {
+    const db = await setup()
+
+    const name = deleteRepo.args.name
+    const repo = await db.getRepo(name)
+
+    if (!repo) {
+      console.log(`Repository ${name} not found`)
+      await db.close()
+      return
+    }
+
+    process.stdout.write(`Delete repository ${green(name)}? [y/N] `)
+
+    const answer = await new Promise((resolve) => {
+      process.stdin.setEncoding('utf8')
+      process.stdin.once('data', (data) => resolve(data.trim().toLowerCase()))
+    })
+
+    if (answer !== 'y' && answer !== 'yes') {
+      console.log('Aborted')
+      await db.close()
+      return
+    }
+
+    const deleted = await db.deleteRemote(name)
+    if (deleted) {
+      console.log(`Repository ${green(name)} deleted`)
+    } else {
+      console.log(`Repository ${name} not found`)
+    }
+
+    await db.close()
+    process.exit(0)
+  }
+)
+
 const seedRemotes = command(
   'seed',
   header('Seed repositories'),
   summary('Seed all your available Git repositories'),
   async () => {
-    const db = await setup()
+    const db = await setup(true)
 
     goodbye(async () => {
       await db.close()
@@ -246,6 +292,7 @@ const cmd = command(
   summary('Gip allows you to manage your Git repositories. No servers, just Peers.'),
   newRepo,
   listRepos,
+  deleteRepo,
   seedRemotes,
   idCmd,
   configCmd,
