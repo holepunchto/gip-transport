@@ -22,9 +22,7 @@ const DB_DIR = 'lib/db/schema/hyperdb'
   ns.register({
     name: 'config',
     compact: true,
-    fields: [
-      { name: 'blindPeers', type: 'fixed32', array: true }
-    ]
+    fields: [{ name: 'blindPeers', type: 'fixed32', array: true }]
   })
 
   Hyperschema.toDisk(schema)

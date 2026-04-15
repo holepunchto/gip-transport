@@ -86,7 +86,7 @@
     "bare-subprocess": "^5.1.0",
     "bare-tty": "^5.0.2",
     "bare-ws": "^2.1.0",
-    "blind-peering": "^1.10.1",
+    "blind-peering": "^2.0.1",
     "cellery": "^1.4.4",
     "cellery-html": "^1.1.9",
     "compact-encoding": "^2.16.1",
