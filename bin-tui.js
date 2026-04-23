@@ -69,6 +69,50 @@ const listRepos = command(
   }
 )
 
+const addRepo = command(
+  'add',
+  header('Add a repository'),
+  summary('Add a remote repository to your local store by URL'),
+  arg('url', 'Repository URL (git+pear://)'),
+  validate(
+    ({ args }) => args.url && args.url.startsWith('git+pear://'),
+    'Must be a valid git+pear:// URL'
+  ),
+  async () => {
+    const db = await setup()
+    const url = addRepo.args.url
+
+    // Register peer listener before joining network — no connection should be missed
+    let resolvePeer
+    const firstPeer = new Promise((resolve) => {
+      resolvePeer = resolve
+    })
+    db.on('connection', (conn) => resolvePeer(conn))
+
+    const { remote, isNew } = await db.addRemote(url)
+
+    if (isNew) {
+      console.log(`Repository ${green(remote.name)} added`)
+    } else {
+      console.log(`Repository ${green(remote.name)} already in store`)
+    }
+
+    const spinFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    let spinIdx = 0
+    const spinner = setInterval(() => {
+      process.stdout.write(`\r${spinFrames[spinIdx++ % spinFrames.length]} Connecting to peers...`)
+    }, 80)
+
+    const conn = await firstPeer
+
+    clearInterval(spinner)
+    const peerKey = dim(Id.encode(conn.remotePublicKey).slice(0, 8))
+    process.stdout.write(`\r${green('✔')} Peer connected ${peerKey}\n`)
+
+    await db.close()
+  }
+)
+
 const deleteRepo = command(
   'delete',
   header('Delete a repository'),
@@ -291,6 +335,7 @@ const cmd = command(
   header('Git Remote the P2P way'),
   summary('Gip allows you to manage your Git repositories. No servers, just Peers.'),
   newRepo,
+  addRepo,
   listRepos,
   deleteRepo,
   seedRemotes,
