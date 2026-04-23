@@ -183,8 +183,8 @@ test('toDrive lists files and reads content', async (t) => {
 
   // List all files
   const paths = []
-  for await (const path of drive.list('/')) {
-    paths.push(path)
+  for await (const { key } of drive.list('/')) {
+    paths.push(key)
   }
 
   t.ok(paths.includes('/README.md'), 'has README.md')

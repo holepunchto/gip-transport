@@ -9,6 +9,50 @@ const process = require('process')
 const green = (text) => `\x1b[32m${text}\x1b[0m`
 const dim = (text) => `\x1b[2m${text}\x1b[0m`
 
+const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+// Render N repo rows in-place. Prints all rows immediately, then re-renders
+// them every tick so spinners animate and resolved rows show their details.
+// loadFn(name) → result, formatRow(name, result | null) → string
+async function parallelRows(names, loadFn, formatRow) {
+  if (names.length === 0) return []
+
+  const results = new Array(names.length).fill(null)
+  const done = new Array(names.length).fill(false)
+
+  // Initial print — all rows with spinners
+  for (const name of names) process.stdout.write(formatRow(name, null) + '\n')
+
+  let frame = 0
+  const redraw = () => {
+    process.stdout.write(`\x1b[${names.length}A`) // move cursor up to first row
+    for (let i = 0; i < names.length; i++) {
+      process.stdout.write(`\r\x1b[K`) // clear line
+      if (done[i]) {
+        process.stdout.write(formatRow(names[i], results[i]))
+      } else {
+        process.stdout.write(`${dim(SPIN[frame % SPIN.length])} ${names[i]}`)
+      }
+      process.stdout.write('\n')
+    }
+    frame++
+  }
+
+  const interval = setInterval(redraw, 80)
+
+  await Promise.all(
+    names.map(async (name, i) => {
+      results[i] = await loadFn(name)
+      done[i] = true
+    })
+  )
+
+  clearInterval(interval)
+  redraw() // final pass — all rows resolved
+
+  return results
+}
+
 const regexRepoName = /^[a-zA-Z0-9_-]+$/
 
 async function setup(readonly = false) {
@@ -52,18 +96,28 @@ const listRepos = command(
   async () => {
     const db = await setup(true)
 
-    if (db._db.core.length === 0) {
+    const names = await db.getRepoNames()
+
+    if (names.length === 0) {
+      console.log(dim('No repositories'))
       await db.close()
       return
     }
 
-    const remotes = await db.openRemotes()
-    for (const [name, remote] of remotes) {
-      console.log(`* ${green(name)}`)
-      console.log(`  Url: ${remote.url}`)
-      console.log(`  Peers: ${remote.core.peers.length}`)
-      console.log(`  Length: ${remote.core.length}`)
-    }
+    await parallelRows(
+      names,
+      // Just the core — no Hyperbee opened for listing.
+      // server:false, client:false → no swarm announcement (list is local-only).
+      (name) => db.getCore(name, { server: false, client: false }),
+      (name, entry) => {
+        if (!entry) return `${dim('⠋')} ${name}`
+        const { core, key } = entry
+        const peers = core.peers.length
+        const len = core.length
+        const url = `git+pear://0.${len}.${Id.encode(key)}/${name}`
+        return `${green('*')} ${name}  ${dim(`${len} blocks · ${peers} peer${peers === 1 ? '' : 's'} · ${url}`)}`
+      }
+    )
 
     await db.close()
   }
@@ -82,32 +136,23 @@ const addRepo = command(
     const db = await setup()
     const url = addRepo.args.url
 
-    // Register peer listener before joining network — no connection should be missed
-    let resolvePeer
-    const firstPeer = new Promise((resolve) => {
-      resolvePeer = resolve
-    })
-    db.on('connection', (conn) => resolvePeer(conn))
+    // Parse the repo name out of the URL up-front so the spinner row has a
+    // stable label while addRemote syncs (joins swarm, waits for peer,
+    // downloads all blocks, opens Remote). Post-sync, git clone reads from
+    // disk.
+    const name = url.split('/').pop() || url
 
-    const { remote, isNew } = await db.addRemote(url)
-
-    if (isNew) {
-      console.log(`Repository ${green(remote.name)} added`)
-    } else {
-      console.log(`Repository ${green(remote.name)} already in store`)
-    }
-
-    const spinFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-    let spinIdx = 0
-    const spinner = setInterval(() => {
-      process.stdout.write(`\r${spinFrames[spinIdx++ % spinFrames.length]} Connecting to peers...`)
-    }, 80)
-
-    const conn = await firstPeer
-
-    clearInterval(spinner)
-    const peerKey = dim(Id.encode(conn.remotePublicKey).slice(0, 8))
-    process.stdout.write(`\r${green('✔')} Peer connected ${peerKey}\n`)
+    await parallelRows(
+      [name],
+      () => db.addRemote(url),
+      (name, result) => {
+        if (!result) return `${dim('⠋')} ${name}`
+        const { isNew, remote } = result
+        const verb = isNew ? 'added' : 'already in store'
+        const len = remote.core.length
+        return `${green('✔')} ${green(name)} ${verb} ${dim(`— ${len} block${len === 1 ? '' : 's'}`)}`
+      }
+    )
 
     await db.close()
   }
@@ -171,9 +216,9 @@ const seedRemotes = command(
     })
 
     const publicKey = await db.getPublicKey()
-    const remotes = await db.openRemotes()
+    const names = await db.getRepoNames()
 
-    if (remotes.size === 0) {
+    if (names.length === 0) {
       console.log(dim('No repositories to seed'))
       await db.close()
       return
@@ -182,28 +227,43 @@ const seedRemotes = command(
     console.log(`${green('Seeding')} — Public key: ${Id.encode(publicKey)}`)
     console.log()
 
-    for (const [name, remote] of remotes) {
-      console.log(`  ${green(name)} — ${remote.core.length} blocks`)
-    }
+    // Seeding is pure core+swarm — no Hyperbee/HyperDB needed. Each core is
+    // registered in corestore and announced on the swarm as a server, so
+    // store.replicate(conn) (wired in _open) handles block-level replication
+    // automatically when peers connect.
+    const entries = await parallelRows(
+      names,
+      (name) => db.getCore(name, { server: true, client: false }),
+      (name, entry) => {
+        if (!entry) return `${dim('⠋')} ${name}`
+        return `  ${green(name)} — ${entry.core.length} blocks`
+      }
+    )
 
     console.log()
+
+    // Wire up transfer events now that all cores are ready
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i]
+      const entry = entries[i]
+      if (!entry) continue
+      const core = entry.core
+
+      core.on('upload', (index, bytes, from) => {
+        const key = Id.encode(from.remotePublicKey).slice(0, 8)
+        console.log(`  ${green('↑')} ${name} block ${index} → ${dim(key)}`)
+      })
+
+      core.on('download', (index, bytes, from) => {
+        const key = Id.encode(from.remotePublicKey).slice(0, 8)
+        console.log(`  ${green('↓')} ${name} block ${index} ← ${dim(key)}`)
+      })
+    }
 
     db.swarm.on('connection', (conn) => {
       const key = Id.encode(conn.remotePublicKey).slice(0, 8)
       console.log(`${green('+')} Peer connected ${dim(key)}`)
     })
-
-    for (const [name, remote] of remotes) {
-      remote.core.on('upload', (index, bytes, from) => {
-        const key = Id.encode(from.remotePublicKey).slice(0, 8)
-        console.log(`  ${green('↑')} ${name} block ${index} → ${dim(key)}`)
-      })
-
-      remote.core.on('download', (index, bytes, from) => {
-        const key = Id.encode(from.remotePublicKey).slice(0, 8)
-        console.log(`  ${green('↓')} ${name} block ${index} ← ${dim(key)}`)
-      })
-    }
   }
 )
 
