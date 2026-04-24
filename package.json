@@ -7,20 +7,23 @@
     "git-pear": "bin-tui.js",
     "gip": "bin-tui.js"
   },
+  "exports": {
+    "./package": "./package.json",
+    ".": {
+      "require": "./index.cjs",
+      "import": "./index.mjs"
+    }
+  },
   "scripts": {
     "test": "brittle-bare test/all.js",
     "format": "prettier . --write",
     "lint": "lunte && prettier . --check",
-    "dev": "npm run clean && npm run build && ./out/darwin-arm64/git-pear.app/Contents/MacOS/git-pear",
-    "build": "bare-build --out out/darwin-arm64 --host darwin-arm64 --name git-pear --runtime bare-native/runtime gui/app.js",
-    "build:android": "bare-build --out out/android-arm64 --host android-arm64 --identifier io.pear.git --name GitPear --runtime bare-native/runtime gui/app.js",
     "clean": "rm -rf out"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "bare-build": "^0.4.5",
     "brittle": "^3.19.1",
     "hyperdht": "^6.21.0",
     "localdrive": "^2.2.1",
@@ -28,9 +31,6 @@
     "test-tmp": "^1.4.0"
   },
   "imports": {
-    "#target": {
-      "default": "./gui/target/default.js"
-    },
     "buffer": {
       "bare": "bare-buffer",
       "default": "buffer"
@@ -74,7 +74,6 @@
     "bare-console": "^6.1.0",
     "bare-fs": "^4.1.6",
     "bare-http1": "^4.3.0",
-    "bare-native": "^0.1.2",
     "bare-net": "^2.1.1",
     "bare-os": "^3.6.1",
     "bare-path": "^3.0.0",
@@ -87,11 +86,8 @@
     "bare-tty": "^5.0.2",
     "bare-ws": "^2.1.0",
     "blind-peering": "^2.0.1",
-    "cellery": "^1.4.4",
-    "cellery-html": "^1.1.9",
     "compact-encoding": "^2.16.1",
     "compact-encoding-struct": "^1.3.0",
-    "coremachine": "^1.1.0",
     "corestore": "^7.9.2",
     "gip-remote": "^1.2.4",
     "graceful-goodbye": "^1.3.3",
