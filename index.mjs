@@ -1,6 +1,2 @@
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const { GipLocalDB } = require('./lib/db')
-
-export { GipLocalDB }
+import db from './lib/db/index.js'
+export const { GipLocalDB } = db
