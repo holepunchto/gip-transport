@@ -283,3 +283,174 @@ test('toDrive returns null for missing branch', async (t) => {
   const drive = await remote.toDrive('main')
   t.is(drive, null)
 })
+
+// --- seedReadOnly config ---
+//
+// These tests pin the contract for the default-on "seed when read-only"
+// behaviour. The setting drives whether we announce non-writable cores on the
+// DHT (server:true) so other peers can pull blocks from us. Default ON makes
+// every running app a potential reseeder for repos it has cloned.
+
+test('seedReadOnly defaults to ON', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+
+  t.teardown(() => db.close())
+  await db.ready()
+
+  t.is(await db.getSeedReadOnly(), true, 'default is ON')
+  t.is(db._seedReadOnly, true, 'cached field is ON')
+})
+
+test('seedReadOnly can be turned off and on', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+
+  t.teardown(() => db.close())
+  await db.ready()
+
+  await db.setSeedReadOnly(false)
+  t.is(await db.getSeedReadOnly(), false, 'persisted as off')
+  t.is(db._seedReadOnly, false, 'cache updated to off')
+
+  await db.setSeedReadOnly(true)
+  t.is(await db.getSeedReadOnly(), true, 'persisted back to on')
+  t.is(db._seedReadOnly, true, 'cache updated to on')
+})
+
+test('seedReadOnly persists across db restarts', async (t) => {
+  // Open and close two GipLocalDB instances backed by separate Corestores
+  // pointing at the same directory — simulates the app being closed and
+  // reopened on the same machine.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+  const dir = await tmp(t)
+
+  const store1 = new Corestore(dir)
+  const db1 = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: store1 })
+  await db1.ready()
+  await db1.setSeedReadOnly(false)
+  await db1.close()
+  await store1.close()
+
+  const store2 = new Corestore(dir)
+  t.teardown(() => store2.close())
+  const db2 = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: store2 })
+  t.teardown(() => db2.close())
+  await db2.ready()
+
+  t.is(await db2.getSeedReadOnly(), false, 'persisted off across restart')
+  t.is(db2._seedReadOnly, false, 'cache reflects persisted value')
+})
+
+test('writable cores are always announced (server:true) regardless of seedReadOnly', async (t) => {
+  // Even with seedReadOnly off, our own writable cores must still be
+  // discoverable — we are the source of truth for them. The setting only
+  // gates non-writable cores.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+
+  t.teardown(() => db.close())
+  await db.ready()
+
+  await db.setSeedReadOnly(false)
+
+  const remote = await db.createRemote('mine')
+  const hex = remote.core.key.toString('hex')
+  const entry = db._joined.get(hex)
+  t.ok(entry, 'core joined the swarm')
+  t.ok(remote.core.writable, 'core is writable (we own it)')
+  // discovery._server is the internal flag set by swarm.join. Check it
+  // pragmatically — if hyperswarm renames it later this assertion needs
+  // to follow, but for now it's the cleanest way to verify announcement.
+  t.is(entry.discovery.isServer, true, 'writable core announced')
+})
+
+test('non-writable core honours seedReadOnly setting on join', async (t) => {
+  // Two peers share one swarm bootstrap. Peer A creates a repo, peer B
+  // joins it as a non-writable clone. We toggle seedReadOnly on B and
+  // verify the join's server flag follows.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+
+  const remoteA = await dbA.createRemote('shared')
+
+  // Default ON case — joining a non-writable core should announce.
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  // _joinCore directly (no need to download; this is purely a swarm/topic
+  // assertion).
+  await dbB._joinCore(remoteA.core.key)
+  const hex = remoteA.core.key.toString('hex')
+  const entry = dbB._joined.get(hex)
+  t.ok(entry, 'B joined A\'s core')
+  t.is(entry.core.writable, false, 'B sees core as read-only')
+  t.is(entry.discovery.isServer, true, 'announced because seedReadOnly is ON by default')
+
+  // Toggle off — re-applies to currently joined non-writable cores.
+  await dbB.setSeedReadOnly(false)
+  t.is(entry.discovery.isServer, false, 'announcement turned off after setSeedReadOnly(false)')
+
+  // And back on.
+  await dbB.setSeedReadOnly(true)
+  t.is(entry.discovery.isServer, true, 'announcement turned back on after setSeedReadOnly(true)')
+})
+
+test('seedReadOnly off means non-writable cores join as client-only', async (t) => {
+  // Fresh DB with the setting turned off BEFORE any non-writable core is
+  // joined — verifies the cached _seedReadOnly is read from config at open.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+  const dir = await tmp(t)
+
+  // Persist seedReadOnly:false in a throwaway DB at `dir`, then close it
+  // (and its corestore) so we can reopen the same dir fresh.
+  const setupStore = new Corestore(dir)
+  const setup = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: setupStore })
+  await setup.ready()
+  await setup.setSeedReadOnly(false)
+  await setup.close()
+  await setupStore.close()
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+  const remoteA = await dbA.createRemote('shared-off')
+
+  const storeB = new Corestore(dir)
+  t.teardown(() => storeB.close())
+  const dbB = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: storeB })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  t.is(dbB._seedReadOnly, false, 'cache loaded from persisted config')
+
+  await dbB._joinCore(remoteA.core.key)
+  const hex = remoteA.core.key.toString('hex')
+  const entry = dbB._joined.get(hex)
+  t.is(entry.discovery.isServer, false, 'not announced when setting is off')
+})

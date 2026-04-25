@@ -303,8 +303,50 @@ const configGet = command(
       } else {
         for (const peer of peers) console.log(peer)
       }
+    } else if (key === 'seed-read-only') {
+      const enabled = await db.getSeedReadOnly()
+      console.log(enabled ? 'on' : 'off')
     } else {
       console.error(`Unknown config key: ${key}`)
+    }
+
+    await db.close()
+  }
+)
+
+// Parse a flexible boolean string. Used for the seed-read-only toggle so the
+// user can write `on/off`, `true/false`, `yes/no`, `1/0` interchangeably.
+function parseBool(value) {
+  const v = String(value).toLowerCase()
+  if (['on', 'true', 'yes', '1'].includes(v)) return true
+  if (['off', 'false', 'no', '0'].includes(v)) return false
+  return null
+}
+
+const configSet = command(
+  'set',
+  header('Set a scalar config value'),
+  summary('Set a non-list config key (e.g. seed-read-only on|off)'),
+  arg('key', 'Config key'),
+  arg('value', 'Value'),
+  validate(({ args }) => args.key && args.value, 'Key and value are required'),
+  async () => {
+    const db = await setup()
+
+    const key = configSet.args.key
+    const value = configSet.args.value
+
+    if (key === 'seed-read-only') {
+      const parsed = parseBool(value)
+      if (parsed === null) {
+        console.error(`Invalid boolean: ${value} (use on|off)`)
+        await db.close()
+        return
+      }
+      await db.setSeedReadOnly(parsed)
+      console.log(`${green(key)} set to ${parsed ? 'on' : 'off'}`)
+    } else {
+      console.error(`Unknown scalar config key: ${key}`)
     }
 
     await db.close()
@@ -368,21 +410,23 @@ const configCmd = command(
   header('Manage configuration'),
   summary('Get and set config values'),
   configGet,
+  configSet,
   configAdd,
   configRemove,
   async () => {
     const db = await setup(true)
 
     const peers = await db.getBlindPeers()
+    const seedReadOnly = await db.getSeedReadOnly()
+
+    console.log(`${green('seed-read-only')}: ${seedReadOnly ? 'on' : 'off'}`)
 
     if (peers.length === 0) {
-      console.log(dim('No config set'))
-      await db.close()
-      return
+      console.log(`${green('blind-peers')}: ${dim('(none)')}`)
+    } else {
+      console.log(`${green('blind-peers')}:`)
+      for (const peer of peers) console.log(`  ${peer}`)
     }
-
-    console.log(`${green('blind-peers')}:`)
-    for (const peer of peers) console.log(`  ${peer}`)
 
     await db.close()
   }

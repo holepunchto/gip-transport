@@ -12,7 +12,9 @@
       "indexes": [],
       "schema": "@gip/repos",
       "derived": false,
-      "key": ["name"],
+      "key": [
+        "name"
+      ],
       "trigger": null
     },
     {

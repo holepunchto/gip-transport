@@ -21,8 +21,15 @@ const DB_DIR = 'lib/db/schema/hyperdb'
 
   ns.register({
     name: 'config',
-    compact: true,
-    fields: [{ name: 'blindPeers', type: 'fixed32', array: true }]
+    fields: [
+      { name: 'blindPeers', type: 'fixed32', array: true },
+      // When true (default), we act as a server on the swarm even for
+      // read-only / cloned cores. This lets other peers discover us and
+      // pull blocks we already have, which is the cheap way to reseed
+      // someone else's repo from your phone. Stored as a bool so that
+      // an unset field reads as undefined → treated as ON in code.
+      { name: 'seedReadOnly', type: 'bool', required: false }
+    ]
   })
 
   Hyperschema.toDisk(schema)

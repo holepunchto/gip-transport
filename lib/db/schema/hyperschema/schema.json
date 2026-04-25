@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "schema": [
     {
       "name": "repos",
@@ -36,7 +36,7 @@
     {
       "name": "config",
       "namespace": "gip",
-      "compact": true,
+      "compact": false,
       "flagsPosition": 0,
       "fields": [
         {
@@ -44,6 +44,12 @@
           "array": true,
           "type": "fixed32",
           "version": 2
+        },
+        {
+          "name": "seedReadOnly",
+          "required": false,
+          "type": "bool",
+          "version": 3
         }
       ]
     }
