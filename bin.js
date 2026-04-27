@@ -4,7 +4,6 @@ const goodbye = require('graceful-goodbye')
 const process = require('process')
 const readline = require('readline')
 const { Gip } = require('./lib/gip.js')
-const { GitPearLink } = require('gip-remote')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err

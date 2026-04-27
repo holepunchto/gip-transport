@@ -267,6 +267,108 @@ test('getBranchRef returns null for missing branch', async (t) => {
   t.is(ref, null)
 })
 
+test('deleteRemote purges core blocks so re-create starts at length 0', async (t) => {
+  // Regression for the "delete then re-add returns the same key with the old
+  // length" bug. Corestore-named cores are deterministic — without an explicit
+  // purge, the second createRemote would re-open the on-disk core and inherit
+  // the previous push's blocks (including the old branch/objects records),
+  // making the URL embed the old length and serving stale data to peers.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+
+  t.teardown(() => db.close())
+  await db.ready()
+
+  const original = await db.createRemote('round-trip')
+  const originalKey = Buffer.from(original.key)
+  await original.push('main', OID_COMMIT, makeTestObjects())
+
+  const lengthBeforeDelete = original.core.length
+  t.ok(lengthBeforeDelete > 0, 'first push produced blocks')
+
+  const deleted = await db.deleteRemote('round-trip')
+  t.is(deleted, true, 'delete reports success')
+  t.is(await db.getRepo('round-trip'), null, 'repo registry row gone')
+
+  const recreated = await db.createRemote('round-trip')
+  t.alike(
+    Buffer.from(recreated.key),
+    originalKey,
+    'corestore-named cores are deterministic — same key after delete'
+  )
+  t.is(recreated.core.length, 0, 'recreated core starts empty after purge')
+  t.is(await recreated.getHead(), null, 'no leftover HEAD record')
+  t.is(await recreated.getObject(OID_COMMIT), null, 'no leftover objects')
+
+  const refs = await recreated.getAllRefs()
+  t.is(refs.length, 0, 'no leftover refs')
+})
+
+test('deleteRemote returns false for unknown name', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+
+  t.teardown(() => db.close())
+  await db.ready()
+
+  const result = await db.deleteRemote('never-existed')
+  t.is(result, false)
+})
+
+test('openRemote can be called twice without hanging on the 2nd call', async (t) => {
+  // Regression for the "syncing only works once" bug.
+  //
+  // First openRemote on B works because the swarm fires a 'connection' event
+  // and _waitForTopicPeer resolves through the listener it just attached.
+  // Second openRemote (same key) reuses the cached _joined entry, so
+  // swarm.join is a no-op and no new 'connection' event ever fires — B was
+  // already connected to A from the first sync. The fix is for
+  // _waitForTopicPeer to also walk currently-connected peers and resolve via
+  // their existing topic announcement.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+  const remoteA = await dbA.createRemote('twice-synced')
+
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  const link = { name: 'twice-synced', key: remoteA.core.key }
+
+  // Bound the call: if the bug is back, this never resolves and the test
+  // dies on Brittle's per-test timeout instead of giving us a clean signal.
+  const guard = (label, p) =>
+    Promise.race([
+      p,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} hung > 10s`)), 10000)
+      )
+    ])
+
+  await guard('1st openRemote', dbB.openRemote(link))
+  t.pass('first openRemote resolved')
+
+  await guard('2nd openRemote', dbB.openRemote(link))
+  t.pass('second openRemote resolved (no hang)')
+})
+
 test('toDrive returns null for missing branch', async (t) => {
   const { bootstrap } = await createTestnet(3, t.teardown)
 
