@@ -1,6 +1,6 @@
 #!/usr/bin/env bare
 
-const { header, summary, command, validate, arg } = require('paparam')
+const { header, summary, command, validate, arg, flag } = require('paparam')
 const { GipLocalDB } = require('./lib/db')
 const Id = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
@@ -93,13 +93,31 @@ const listRepos = command(
   'list',
   header('List repositories'),
   summary('List all your available Git repositories'),
+  flag('--json', 'Output in JSON format'),
   async () => {
+    const outputJson = !!listRepos.flags.json
     const db = await setup(true)
 
     const names = await db.getRepoNames()
 
     if (names.length === 0) {
-      console.log(dim('No repositories'))
+      console.log(outputJson ? JSON.stringify([]) : dim('No repositories'))
+      await db.close()
+      return
+    }
+
+    if (outputJson) {
+      const results = await Promise.all(
+        names.map(async (name) => {
+          const entry = await db.getCore(name, { server: false, client: false })
+          if (!entry) return null
+          const { core, key } = entry
+          const len = core.length
+          const url = `git+pear://0.${len}.${Id.encode(key)}/${name}`
+          return { name, url }
+        })
+      )
+      console.log(JSON.stringify(results.filter((r) => r !== null)))
       await db.close()
       return
     }
