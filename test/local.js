@@ -267,12 +267,13 @@ test('getBranchRef returns null for missing branch', async (t) => {
   t.is(ref, null)
 })
 
-test('deleteRemote purges core blocks so re-create starts at length 0', async (t) => {
+test('re-creating a deleted name gets a fresh core, not the old one', async (t) => {
   // Regression for the "delete then re-add returns the same key with the old
-  // length" bug. Corestore-named cores are deterministic — without an explicit
-  // purge, the second createRemote would re-open the on-disk core and inherit
-  // the previous push's blocks (including the old branch/objects records),
-  // making the URL embed the old length and serving stale data to peers.
+  // length" bug. A repo's key must retire with the repo: createRemote gives
+  // each repo its own corestore namespace, so a same-named successor is a
+  // different core. Deleting used to leave the name mapped to the same
+  // deterministic key and truncate the log to hide the old blocks — which
+  // forks a key that peers and blind peers already mirror.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const db = new GipLocalDB({
@@ -295,17 +296,77 @@ test('deleteRemote purges core blocks so re-create starts at length 0', async (t
   t.is(await db.getRepo('round-trip'), null, 'repo registry row gone')
 
   const recreated = await db.createRemote('round-trip')
-  t.alike(
-    Buffer.from(recreated.key),
-    originalKey,
-    'corestore-named cores are deterministic — same key after delete'
-  )
-  t.is(recreated.core.length, 0, 'recreated core starts empty after purge')
+  t.unlike(Buffer.from(recreated.key), originalKey, 'the successor is a different core')
+  t.is(recreated.core.fork, 0, 'and an unforked one — delete never rewrites a published key')
+  t.is(recreated.core.length, 0, 'recreated core starts empty')
   t.is(await recreated.getHead(), null, 'no leftover HEAD record')
   t.is(await recreated.getObject(OID_COMMIT), null, 'no leftover objects')
 
   const refs = await recreated.getAllRefs()
   t.is(refs.length, 0, 'no leftover refs')
+})
+
+test('deleteRemote works on a cloned repo we have no write capability for', async (t) => {
+  // Regression for the SESSION_NOT_WRITABLE crash. Delete used to truncate the
+  // core to hide the old blocks, which is an append — so it threw on every
+  // repo added by URL, i.e. most of them. Worse, it threw after closing the
+  // Remote and destroying the discovery session but before deleting the
+  // registry row, leaving an entry that was torn down yet undeletable.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+
+  const remoteA = await dbA.createRemote('cloned')
+  await remoteA.push('main', OID_COMMIT, makeTestObjects())
+
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  const cloned = await dbB.openRemote({ name: 'cloned', key: remoteA.core.key })
+  t.absent(cloned.core.writable, 'cloned core carries no write capability')
+  t.ok(cloned.core.contiguousLength > 0, 'and openRemote downloaded its blocks')
+
+  t.is(await dbB.deleteRemote('cloned'), true, 'delete reports success')
+  t.is(await dbB.getRepo('cloned'), null, 'registry row gone')
+  t.alike(await dbB.getRepoNames(), [], 'and the repo is no longer listed')
+
+  // The blocks are the only thing a delete can reclaim for a cloned repo —
+  // openRemote pulls them in full, so they're the bulk of the store.
+  const core = dbB._store.get({ key: remoteA.core.key })
+  await core.ready()
+  t.teardown(() => core.close())
+  t.is(core.contiguousLength, 0, 'local blocks dropped')
+})
+
+test('a failure reclaiming disk still deletes the repo', async (t) => {
+  // The registry row is the only durable part of a delete; the blocks are
+  // cache once nothing points at them. So clearing them must never be able to
+  // strand a row the user has already asked to be rid of.
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => db.close())
+  await db.ready()
+
+  const remote = await db.createRemote('doomed')
+  await remote.push('main', OID_COMMIT, makeTestObjects())
+
+  db._clearCore = () => Promise.reject(new Error('storage went away'))
+
+  t.is(await db.deleteRemote('doomed'), true, 'delete still reports success')
+  t.is(await db.getRepo('doomed'), null, 'registry row gone')
 })
 
 test('deleteRemote returns false for unknown name', async (t) => {
@@ -357,9 +418,7 @@ test('openRemote can be called twice without hanging on the 2nd call', async (t)
   const guard = (label, p) =>
     Promise.race([
       p,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`${label} hung > 10s`)), 10000)
-      )
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} hung > 10s`)), 10000))
     ])
 
   await guard('1st openRemote', dbB.openRemote(link))
@@ -507,7 +566,7 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
   await dbB._joinCore(remoteA.core.key)
   const hex = remoteA.core.key.toString('hex')
   const entry = dbB._joined.get(hex)
-  t.ok(entry, 'B joined A\'s core')
+  t.ok(entry, "B joined A's core")
   t.is(entry.core.writable, false, 'B sees core as read-only')
   t.is(entry.discovery.isServer, true, 'announced because seedReadOnly is ON by default')
 
