@@ -156,6 +156,46 @@ test('new branch at an existing commit', async (t) => {
   t.is((await remote.getRefObjects(ref.oid)).length, 3)
 })
 
+test('head follows the local HEAD, not the first branch pushed', async (t) => {
+  const ctx = await setup(t)
+
+  // An alphabetically-earlier branch would win the remote's first-push
+  // head default — the local HEAD (main) must be mirrored instead.
+  ctx.git(['branch', 'aaa-feature'])
+  ctx.git(['push', ctx.url, '--all'])
+
+  const dest = path.join(ctx.dir, 'clone')
+  ctx.git(['clone', '-q', ctx.url, dest])
+  t.is(ctx.git(['symbolic-ref', 'HEAD'], { cwd: dest }).trim(), 'refs/heads/main')
+
+  const db = await ctx.openStore()
+  await db.openRemotes()
+  t.is(await db.getRemote('t').getHead(), 'main')
+})
+
+test('a push repairs a wrong head', async (t) => {
+  const ctx = await setup(t)
+  ctx.git(['branch', 'aaa-feature'])
+  ctx.git(['push', ctx.url, '--all'])
+
+  // Simulate a store written before head syncing existed. A fully
+  // up-to-date push never reaches the helper (git short-circuits), so the
+  // repair rides the next real push.
+  let db = await ctx.openStore()
+  await db.openRemotes()
+  await db.getRemote('t').setHead('aaa-feature')
+  await db.close()
+
+  ctx.write('b.txt', 'more\n')
+  ctx.git(['add', '-A'])
+  ctx.git(['commit', '-qm', 'two'])
+  ctx.git(['push', ctx.url, '--all'])
+
+  db = await ctx.openStore()
+  await db.openRemotes()
+  t.is(await db.getRemote('t').getHead(), 'main')
+})
+
 test('annotated tag pushes after the branch', async (t) => {
   const ctx = await setup(t)
   ctx.git(['push', ctx.url, '--all'])
