@@ -529,7 +529,7 @@ test('writable cores are always announced (server:true) regardless of seedReadOn
 
   const remote = await db.createRemote('mine')
   const hex = remote.core.key.toString('hex')
-  const entry = db._joined.get(hex)
+  const entry = await db._joined.get(hex)
   t.ok(entry, 'core joined the swarm')
   t.ok(remote.core.writable, 'core is writable (we own it)')
   // discovery._server is the internal flag set by swarm.join. Check it
@@ -565,7 +565,7 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
   // assertion).
   await dbB._joinCore(remoteA.core.key)
   const hex = remoteA.core.key.toString('hex')
-  const entry = dbB._joined.get(hex)
+  const entry = await dbB._joined.get(hex)
   t.ok(entry, "B joined A's core")
   t.is(entry.core.writable, false, 'B sees core as read-only')
   t.is(entry.discovery.isServer, true, 'announced because seedReadOnly is ON by default')
@@ -612,6 +612,80 @@ test('seedReadOnly off means non-writable cores join as client-only', async (t) 
 
   await dbB._joinCore(remoteA.core.key)
   const hex = remoteA.core.key.toString('hex')
-  const entry = dbB._joined.get(hex)
+  const entry = await dbB._joined.get(hex)
   t.is(entry.discovery.isServer, false, 'not announced when setting is off')
+})
+
+test('a local-only join leaves discovery open to a later join', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+  const remoteA = await dbA.createRemote('listed')
+
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  // What a listing route does: local metadata, no swarm state.
+  const listed = await dbB._joinCore(remoteA.core.key, { server: false, client: false })
+  t.is(listed.discovery, null, 'local-only join creates no swarm session')
+
+  // Opening the repo afterwards must still be able to find peers.
+  const opened = await dbB._joinCore(remoteA.core.key)
+  t.is(opened.discovery.isClient, true, 'a later join looks up the topic')
+  t.is(opened.discovery.isServer, true, 'a later join announces the topic')
+})
+
+test('concurrent joins share one core session', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+  const remoteA = await dbA.createRemote('raced')
+
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  const [x, y] = await Promise.all([
+    dbB._joinCore(remoteA.core.key),
+    dbB._joinCore(remoteA.core.key)
+  ])
+
+  t.is(x.core, y.core, 'both callers got the same core')
+  t.is(dbB._joined.size, 1, 'one cache entry')
+})
+
+test('seedReadOnly survives an unrelated config write', async (t) => {
+  // The schema stores seedReadOnly as a flag bit, so any written record
+  // decodes to a strict boolean. Writing config for another reason must not
+  // silently persist seedReadOnly:false and turn reseeding off.
+  const db = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap: (await createTestnet(3, t.teardown)).bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => db.close())
+  await db.ready()
+
+  t.is(await db.getSeedReadOnly(), true, 'default is ON')
+
+  await db.addBlindPeer('qiysd9x3cwk47wb1khrbiw1ie8gj9uttnt3mwcgr9obthb96kxxo')
+
+  t.is(await db.getSeedReadOnly(), true, 'still ON after writing a blind peer')
+  t.is(db._seedReadOnly, true, 'cached field still ON')
 })
