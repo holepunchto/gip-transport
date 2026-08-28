@@ -19,7 +19,9 @@
     }
   },
   "scripts": {
-    "test": "brittle-bare test/all.js",
+    "test": "npm run test:node && npm run test:bare",
+    "test:node": "brittle-node test/all.js",
+    "test:bare": "brittle-bare test/all.js",
     "start": "bare bin-tui.js --no-updates",
     "format": "lunte --fix && prettier . --write",
     "lint": "lunte && prettier . --check",
