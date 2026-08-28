@@ -1,0 +1,99 @@
+name: Integrate
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint
+    steps:
+      - uses: holepunchto/actions/node-base@v1
+      - run: npm run lint
+
+  build:
+    name: ${{ matrix.host }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            host: linux-x64
+          - os: ubuntu-24.04-arm
+            host: linux-arm64
+          - os: macos-latest
+            host: darwin-arm64
+          - os: macos-15-intel
+            host: darwin-x64
+          - os: windows-latest
+            host: win32-x64
+          - os: windows-11-arm
+            host: win32-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Setup repo
+        uses: holepunchto/actions/.github/steps/setup-repo@v1
+
+      - name: Install w/ dev deps
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build Local Runtime
+        run: npm run make
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: ${{ matrix.host }}
+          path: out/${{ matrix.host }}/swap*
+
+  package:
+    name: Package by-arch
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup repo
+        uses: holepunchto/actions/.github/steps/setup-repo@v1
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: apps
+
+      - name: Build by-arch and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x apps/darwin-*/gip apps/linux-*/gip
+          chmod +x apps/darwin-*/gip-pear apps/linux-*/gip-pear
+          chmod +x apps/darwin-*/git-remote-git+pear apps/linux-*/git-remote-git+pear
+          npx --yes pear-build \
+            --darwin-arm64-app apps/darwin-arm64/gip \
+            --darwin-x64-app apps/darwin-x64/gip \
+            --linux-arm64-app apps/linux-arm64/gip \
+            --linux-x64-app apps/linux-x64/gip \
+            --win32-x64-app apps/win32-x64/gip.exe \
+            --win32-arm64-app apps/win32-arm64/gip.exe \
+            --darwin-arm64-app apps/darwin-arm64/gip-pear \
+            --darwin-x64-app apps/darwin-x64/gip-pear \
+            --linux-arm64-app apps/linux-arm64/gip-pear \
+            --linux-x64-app apps/linux-x64/gip-pear \
+            --win32-x64-app apps/win32-x64/gip-pear.exe \
+            --win32-arm64-app apps/win32-arm64/gip-pear.exe \
+            --darwin-arm64-app apps/darwin-arm64/git-remote-git+pear \
+            --darwin-x64-app apps/darwin-x64/git-remote-git+pear \
+            --linux-arm64-app apps/linux-arm64/git-remote-git+pear \
+            --linux-x64-app apps/linux-x64/git-remote-git+pear \
+            --win32-x64-app apps/win32-x64/git-remote-git+pear.exe \
+            --win32-arm64-app apps/win32-arm64/git-remote-git+pear.exe \
+            --target by-arch --package ./package.json
+          tar -czf by-arch.tar.gz by-arch
+          gh release create "$GITHUB_REF_NAME" --generate-notes || true
+          gh release upload "$GITHUB_REF_NAME" by-arch.tar.gz --clobber

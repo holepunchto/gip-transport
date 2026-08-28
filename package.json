@@ -1,11 +1,14 @@
 {
   "name": "gip-transport",
   "version": "2.0.0",
+  "productName": "gip",
+  "upgrade": "pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o",
   "description": "Git remote helper for P2P remotes — no server, just peers.",
   "bin": {
     "git-remote-git+pear": "bin.js",
     "git-pear": "bin-tui.js",
-    "gip": "bin-tui.js"
+    "gip": "bin-tui.js",
+    "gip-transport": "install.js"
   },
   "exports": {
     "./package": "./package.json",
@@ -17,17 +20,42 @@
   },
   "scripts": {
     "test": "brittle-bare test/all.js",
-    "format": "prettier . --write",
+    "start": "bare bin-tui.js --no-updates",
+    "format": "lunte --fix && prettier . --write",
     "lint": "lunte && prettier . --check",
-    "clean": "rm -rf out"
+    "clean": "rm -rf out",
+    "make": "node scripts/make.js",
+    "make:gip": "node scripts/make.js gip",
+    "make:git-pear": "node scripts/make.js git-pear",
+    "make:git-remote-git+pear": "node scripts/make.js git-remote-git+pear",
+    "make:gip:darwin-arm64": "bare-build --name gip --standalone --host darwin-arm64 --out ./out/by-arch/darwin-arm64/app bin-tui.js",
+    "make:gip:darwin-x64": "bare-build --name gip --standalone --host darwin-x64 --out ./out/by-arch/darwin-x64/app bin-tui.js",
+    "make:gip:linux-arm64": "bare-build --name gip --standalone --host linux-arm64 --out ./out/by-arch/linux-arm64/app bin-tui.js",
+    "make:gip:linux-x64": "bare-build --name gip --standalone --host linux-x64 --out ./out/by-arch/linux-x64/app bin-tui.js",
+    "make:gip:win32-arm64": "bare-build --name gip --standalone --host win32-arm64 --out ./out/by-arch/win32-arm64/app bin-tui.js",
+    "make:gip:win32-x64": "bare-build --name gip --standalone --host win32-x64 --out ./out/by-arch/win32-x64/app bin-tui.js",
+    "make:git-pear:darwin-arm64": "bare-build --name git-pear --standalone --host darwin-arm64 --out ./out/by-arch/darwin-arm64/app bin-tui.js",
+    "make:git-pear:darwin-x64": "bare-build --name git-pear --standalone --host darwin-x64 --out ./out/by-arch/darwin-x64/app bin-tui.js",
+    "make:git-pear:linux-arm64": "bare-build --name git-pear --standalone --host linux-arm64 --out ./out/by-arch/linux-arm64/app bin-tui.js",
+    "make:git-pear:linux-x64": "bare-build --name git-pear --standalone --host linux-x64 --out ./out/by-arch/linux-x64/app bin-tui.js",
+    "make:git-pear:win32-arm64": "bare-build --name git-pear --standalone --host win32-arm64 --out ./out/by-arch/win32-arm64/app bin-tui.js",
+    "make:git-pear:win32-x64": "bare-build --name git-pear --standalone --host win32-x64 --out ./out/by-arch/win32-x64/app bin-tui.js",
+    "make:git-remote-git+pear:darwin-arm64": "bare-build --name git-remote-git+pear --standalone --host darwin-arm64 --out ./out/by-arch/darwin-arm64/app bin.js",
+    "make:git-remote-git+pear:darwin-x64": "bare-build --name git-remote-git+pear --standalone --host darwin-x64 --out ./out/by-arch/darwin-x64/app bin.js",
+    "make:git-remote-git+pear:linux-arm64": "bare-build --name git-remote-git+pear --standalone --host linux-arm64 --out ./out/by-arch/linux-arm64/app bin.js",
+    "make:git-remote-git+pear:linux-x64": "bare-build --name git-remote-git+pear --standalone --host linux-x64 --out ./out/by-arch/linux-x64/app bin.js",
+    "make:git-remote-git+pear:win32-arm64": "bare-build --name git-remote-git+pear --standalone --host win32-arm64 --out ./out/by-arch/win32-arm64/app bin.js",
+    "make:git-remote-git+pear:win32-x64": "bare-build --name git-remote-git+pear --standalone --host win32-x64 --out ./out/by-arch/win32-x64/app bin.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "bare-build": "^1.0.2",
     "brittle": "^3.19.1",
     "hyperdht": "^6.33.0",
     "localdrive": "^2.2.1",
+    "lunte": "^1.2.0",
     "prettier-config-holepunch": "^2.0.0",
     "test-tmp": "^1.4.0"
   },
@@ -101,11 +129,13 @@
     "keet-identity-key": "^3.2.0",
     "mirror-drive": "^1.14.2",
     "paparam": "^1.10.1",
+    "pear-runtime": "^1.1.4",
     "protomux-wakeup": "^2.9.0",
     "ready-resource": "^1.2.0",
     "rebuild-git": "^1.1.1",
     "sodium-native": "^5.1.0",
     "streamx": "^2.28.0",
+    "which-runtime": "^1.4.0",
     "z32": "^1.1.0"
   },
   "repository": {

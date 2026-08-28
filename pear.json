@@ -1,0 +1,10 @@
+{
+  "multisig": {
+    "publicKeys": [
+      "9fg3sxfasu7qgs14fwpk4e545hst8oikw1wrwt7663rc6gr5dx9o",
+      "ocou5mpkyf5nb8h87j56isdq5pm4ptfu4w5f5mkqio4xmkdehciy"
+    ],
+    "namespace": "holepunchto/gip-transport$j64xqji37kxkjxj8idu78uubgysrwsuawqx4qgu5ch7i8rap35ho",
+    "quorum": 1
+  }
+}

@@ -3,9 +3,8 @@ const createTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
 const tmp = require('test-tmp')
 const Corestore = require('corestore')
-
-const { GipLocalDB } = require('../lib/db')
 const { parseCommit } = require('gip-remote')
+const { GipLocalDB } = require('../lib/db')
 
 async function createStore(t) {
   const dir = await tmp(t)
@@ -509,7 +508,11 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
 
   await dbB._joinCore(remoteA.core.key)
   const hex = remoteA.core.key.toString('hex')
+<<<<<<< HEAD
   const entry = await dbB._joined.get(hex)
+=======
+  const entry = dbB._joined.get(hex)
+>>>>>>> b68ef4c (storage flag + tweaks)
   t.ok(entry, "B joined A's core")
   t.is(entry.core.writable, false, 'B sees core as read-only')
   t.is(entry.discovery.isServer, true, 'announced because seedReadOnly is ON by default')
