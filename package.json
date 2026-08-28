@@ -52,7 +52,7 @@
   "license": "ISC",
   "devDependencies": {
     "bare-build": "^1.0.2",
-    "brittle": "^3.19.1",
+    "brittle": "^4.1.0",
     "hyperdht": "^6.33.0",
     "localdrive": "^2.2.1",
     "lunte": "^1.2.0",
