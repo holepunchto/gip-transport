@@ -12,11 +12,7 @@ if (process.stdin.on) process.stdin.on('error', ignorePipeError)
 if (process.stdout.on) process.stdout.on('error', ignorePipeError)
 
 const argv = process.argv.slice(0)
-// args[0] == node
-// args[1] == git-remote-gip location
-// args[2] == remote name
-// args[3] == url
-let remote = argv[2]
+const remote = argv[2]
 let url = argv[3]
 
 if (!url) {
@@ -24,7 +20,7 @@ if (!url) {
   process.exit(1)
 }
 
-let config = {}
+const config = {}
 try {
   if (!url.includes('git+pear://')) {
     const urlIdx = argv.findIndex((arg) => arg.startsWith('git+pear://'))

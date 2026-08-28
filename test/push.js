@@ -9,15 +9,10 @@ const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
 
-// End-to-end coverage of the push path: real git driving the remote helper
-// against a store in a temp dir. Verifies negotiation (delta-only pushes),
-// the streaming cat-file parser, thin-set indexing and clone integrity.
-
 async function setup(t) {
   const dir = await tmp(t)
 
-  // git resolves the transport by scheme from PATH — shim git-remote-git+pear
-  // to this checkout's bin.js, run by the same runtime running the tests.
+  // git resolves the transport by scheme from PATH.
   const bin = path.join(dir, 'bin')
   fs.mkdirSync(bin)
   const shim = path.join(bin, 'git-remote-git+pear')
@@ -57,8 +52,7 @@ async function setup(t) {
   const url = `${remote.url}?storage=${store}`
   await db.close()
 
-  // The store is single-process — open on demand, callers must be done
-  // pushing before they look inside.
+  // Single-process store — callers must finish pushing before they look inside.
   const openStore = async () => {
     db = new GipLocalDB({ dir: store })
     await db.ready()
@@ -104,20 +98,15 @@ test('incremental push carries the delta and clones stay complete', async (t) =>
   const log = cloneAndLog(ctx, 'clone')
   t.alike(log, ['two', 'one'])
 
-  // Object rows: (blob, tree, commit) per commit — 6 total. Any more means
-  // re-sent duplicates got past dedup; any fewer means the thin set missed
-  // something.
   const db = await ctx.openStore()
   await db.openRemotes()
   const remote = db.getRemote('t')
   const rows = []
   for await (const row of remote._db.find('@gip/objects')) rows.push(row)
-  t.is(rows.length, 6)
+  t.is(rows.length, 6, '(blob, tree, commit) per commit, no duplicates and nothing missing')
 
-  // The branch record must list the full reachable set even though the
-  // second push only carried the delta.
   const objs = await remote.getRefObjects((await remote.getBranchRef('main')).oid)
-  t.is(objs.length, 6)
+  t.is(objs.length, 6, 'branch record lists the full reachable set, not just the delta')
 })
 
 test('no-op push leaves the core untouched', async (t) => {
@@ -140,8 +129,7 @@ test('new branch at an existing commit', async (t) => {
   const ctx = await setup(t)
   ctx.git(['push', ctx.url, '--all'])
 
-  // Same tip, new name — the delta is empty, but the tip must still be
-  // resolvable for indexing and the branch record must be complete.
+  // Same tip, new name: the delta is empty but the tip must still resolve for indexing.
   ctx.git(['branch', 'other'])
   ctx.git(['push', ctx.url, '--all'])
 
@@ -159,8 +147,7 @@ test('new branch at an existing commit', async (t) => {
 test('head follows the local HEAD, not the first branch pushed', async (t) => {
   const ctx = await setup(t)
 
-  // An alphabetically-earlier branch would win the remote's first-push
-  // head default — the local HEAD (main) must be mirrored instead.
+  // An alphabetically-earlier branch would win the remote's first-push head default.
   ctx.git(['branch', 'aaa-feature'])
   ctx.git(['push', ctx.url, '--all'])
 
@@ -178,9 +165,7 @@ test('a push repairs a wrong head', async (t) => {
   ctx.git(['branch', 'aaa-feature'])
   ctx.git(['push', ctx.url, '--all'])
 
-  // Simulate a store written before head syncing existed. A fully
-  // up-to-date push never reaches the helper (git short-circuits), so the
-  // repair rides the next real push.
+  // git short-circuits an up-to-date push, so the repair has to ride the next real one.
   let db = await ctx.openStore()
   await db.openRemotes()
   await db.getRemote('t').setHead('aaa-feature')
@@ -212,8 +197,7 @@ test('annotated tag pushes after the branch', async (t) => {
 test('multi-megabyte payloads stream through the parser intact', async (t) => {
   const ctx = await setup(t)
 
-  // Deterministic, non-uniform bytes — big enough to span many stdout chunks
-  // in the cat-file stream.
+  // Deterministic, non-uniform, and big enough to span many cat-file stdout chunks.
   const big = Buffer.allocUnsafe(3 * 1024 * 1024)
   for (let i = 0; i < big.byteLength; i++) big[i] = (i * 31 + 7) % 251
   fs.writeFileSync(path.join(ctx.repo, 'big.bin'), big)

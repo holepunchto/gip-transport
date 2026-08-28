@@ -5,10 +5,7 @@ const tmp = require('test-tmp')
 const Corestore = require('corestore')
 
 const { GipLocalDB } = require('../lib/db')
-const { parseCommit, walkTree } = require('gip-remote')
-const { GitPearLink } = require('gip-remote')
-
-// --- Helpers ---
+const { parseCommit } = require('gip-remote')
 
 async function createStore(t) {
   const dir = await tmp(t)
@@ -17,7 +14,6 @@ async function createStore(t) {
   return store
 }
 
-// 40-char hex OIDs (proper SHA1 length)
 const OID_BLOB1 = 'aa'.repeat(20) // blob: hello world
 const OID_BLOB2 = 'bb'.repeat(20) // blob: console.log("hi")
 const OID_TREE_SRC = 'cc'.repeat(20) // tree: src/
@@ -32,11 +28,9 @@ function makeTestObjects() {
   const blob2Data = Buffer.from('console.log("hi")')
   objects.set(OID_BLOB2, { type: 'blob', size: blob2Data.length, data: blob2Data })
 
-  // Tree with one file: index.js
   const srcTreeData = makeTreeData([{ mode: '100644', name: 'index.js', oid: OID_BLOB2 }])
   objects.set(OID_TREE_SRC, { type: 'tree', size: srcTreeData.length, data: srcTreeData })
 
-  // Root tree: README.md (blob) + src (subtree)
   const rootTreeData = makeTreeData([
     { mode: '100644', name: 'README.md', oid: OID_BLOB1 },
     { mode: '40000', name: 'src', oid: OID_TREE_SRC }
@@ -65,8 +59,6 @@ function makeTreeData(entries) {
   }
   return Buffer.concat(bufs)
 }
-
-// --- Tests ---
 
 test('parseCommit extracts metadata', (t) => {
   const data = Buffer.from(
@@ -145,18 +137,15 @@ test('push stores objects, branch, and files', async (t) => {
 
   await remote.push('main', OID_COMMIT, objects)
 
-  // Check branch was stored
   const refs = await remote.getAllRefs()
   const main = refs.find((r) => r.ref === 'refs/heads/main')
   t.ok(main, 'main branch exists')
   t.is(main.oid, OID_COMMIT)
 
-  // Check HEAD was synthesized
   const head = refs.find((r) => r.ref === 'HEAD')
   t.ok(head, 'HEAD exists')
   t.is(head.oid, OID_COMMIT)
 
-  // Check objects were stored
   const blob = await remote.getObject(OID_BLOB1)
   t.ok(blob, 'blob stored')
   t.is(blob.type, 'blob')
@@ -181,7 +170,6 @@ test('toDrive lists files and reads content', async (t) => {
   const drive = await remote.toDrive('main')
   t.ok(drive, 'drive created')
 
-  // List all files
   const paths = []
   for await (const { key } of drive.list('/')) {
     paths.push(key)
@@ -191,7 +179,6 @@ test('toDrive lists files and reads content', async (t) => {
   t.ok(paths.includes('/src/index.js'), 'has src/index.js')
   t.is(paths.length, 2)
 
-  // Read file content
   const content = await drive.get('/README.md')
   t.is(content.toString(), 'hello world')
 })
@@ -268,12 +255,7 @@ test('getBranchRef returns null for missing branch', async (t) => {
 })
 
 test('re-creating a deleted name gets a fresh core, not the old one', async (t) => {
-  // Regression for the "delete then re-add returns the same key with the old
-  // length" bug. A repo's key must retire with the repo: createRemote gives
-  // each repo its own corestore namespace, so a same-named successor is a
-  // different core. Deleting used to leave the name mapped to the same
-  // deterministic key and truncate the log to hide the old blocks — which
-  // forks a key that peers and blind peers already mirror.
+  // A repo's key retires with the repo — the old key stays published and unforked.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const db = new GipLocalDB({
@@ -307,11 +289,7 @@ test('re-creating a deleted name gets a fresh core, not the old one', async (t) 
 })
 
 test('deleteRemote works on a cloned repo we have no write capability for', async (t) => {
-  // Regression for the SESSION_NOT_WRITABLE crash. Delete used to truncate the
-  // core to hide the old blocks, which is an append — so it threw on every
-  // repo added by URL, i.e. most of them. Worse, it threw after closing the
-  // Remote and destroying the discovery session but before deleting the
-  // registry row, leaving an entry that was torn down yet undeletable.
+  // Regression: delete used to truncate, which is an append, so it threw on every repo added by URL.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const dbA = new GipLocalDB({
@@ -339,8 +317,7 @@ test('deleteRemote works on a cloned repo we have no write capability for', asyn
   t.is(await dbB.getRepo('cloned'), null, 'registry row gone')
   t.alike(await dbB.getRepoNames(), [], 'and the repo is no longer listed')
 
-  // The blocks are the only thing a delete can reclaim for a cloned repo —
-  // openRemote pulls them in full, so they're the bulk of the store.
+  // Blocks are all a delete can reclaim for a clone, and openRemote pulls them in full.
   const core = dbB._store.get({ key: remoteA.core.key })
   await core.ready()
   t.teardown(() => core.close())
@@ -348,9 +325,7 @@ test('deleteRemote works on a cloned repo we have no write capability for', asyn
 })
 
 test('a failure reclaiming disk still deletes the repo', async (t) => {
-  // The registry row is the only durable part of a delete; the blocks are
-  // cache once nothing points at them. So clearing them must never be able to
-  // strand a row the user has already asked to be rid of.
+  // Blocks are cache once nothing points at them, so clearing them must never strand the row.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const db = new GipLocalDB({
@@ -385,15 +360,7 @@ test('deleteRemote returns false for unknown name', async (t) => {
 })
 
 test('openRemote can be called twice without hanging on the 2nd call', async (t) => {
-  // Regression for the "syncing only works once" bug.
-  //
-  // First openRemote on B works because the swarm fires a 'connection' event
-  // and _waitForTopicPeer resolves through the listener it just attached.
-  // Second openRemote (same key) reuses the cached _joined entry, so
-  // swarm.join is a no-op and no new 'connection' event ever fires — B was
-  // already connected to A from the first sync. The fix is for
-  // _waitForTopicPeer to also walk currently-connected peers and resolve via
-  // their existing topic announcement.
+  // The second call reuses the cached _joined entry, so no new 'connection' event fires.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const dbA = new GipLocalDB({
@@ -413,8 +380,7 @@ test('openRemote can be called twice without hanging on the 2nd call', async (t)
 
   const link = { name: 'twice-synced', key: remoteA.core.key }
 
-  // Bound the call: if the bug is back, this never resolves and the test
-  // dies on Brittle's per-test timeout instead of giving us a clean signal.
+  // Bounded so a regression fails with a clear message, not Brittle's per-test timeout.
   const guard = (label, p) =>
     Promise.race([
       p,
@@ -444,13 +410,6 @@ test('toDrive returns null for missing branch', async (t) => {
   const drive = await remote.toDrive('main')
   t.is(drive, null)
 })
-
-// --- seedReadOnly config ---
-//
-// These tests pin the contract for the default-on "seed when read-only"
-// behaviour. The setting drives whether we announce non-writable cores on the
-// DHT (server:true) so other peers can pull blocks from us. Default ON makes
-// every running app a potential reseeder for repos it has cloned.
 
 test('seedReadOnly defaults to ON', async (t) => {
   const { bootstrap } = await createTestnet(3, t.teardown)
@@ -488,9 +447,6 @@ test('seedReadOnly can be turned off and on', async (t) => {
 })
 
 test('seedReadOnly persists across db restarts', async (t) => {
-  // Open and close two GipLocalDB instances backed by separate Corestores
-  // pointing at the same directory — simulates the app being closed and
-  // reopened on the same machine.
   const { bootstrap } = await createTestnet(3, t.teardown)
   const dir = await tmp(t)
 
@@ -512,9 +468,6 @@ test('seedReadOnly persists across db restarts', async (t) => {
 })
 
 test('writable cores are always announced (server:true) regardless of seedReadOnly', async (t) => {
-  // Even with seedReadOnly off, our own writable cores must still be
-  // discoverable — we are the source of truth for them. The setting only
-  // gates non-writable cores.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const db = new GipLocalDB({
@@ -532,16 +485,10 @@ test('writable cores are always announced (server:true) regardless of seedReadOn
   const entry = await db._joined.get(hex)
   t.ok(entry, 'core joined the swarm')
   t.ok(remote.core.writable, 'core is writable (we own it)')
-  // discovery._server is the internal flag set by swarm.join. Check it
-  // pragmatically — if hyperswarm renames it later this assertion needs
-  // to follow, but for now it's the cleanest way to verify announcement.
   t.is(entry.discovery.isServer, true, 'writable core announced')
 })
 
 test('non-writable core honours seedReadOnly setting on join', async (t) => {
-  // Two peers share one swarm bootstrap. Peer A creates a repo, peer B
-  // joins it as a non-writable clone. We toggle seedReadOnly on B and
-  // verify the join's server flag follows.
   const { bootstrap } = await createTestnet(3, t.teardown)
 
   const dbA = new GipLocalDB({
@@ -553,7 +500,6 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
 
   const remoteA = await dbA.createRemote('shared')
 
-  // Default ON case — joining a non-writable core should announce.
   const dbB = new GipLocalDB({
     swarm: new Hyperswarm({ bootstrap }),
     store: await createStore(t)
@@ -561,8 +507,6 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
   t.teardown(() => dbB.close())
   await dbB.ready()
 
-  // _joinCore directly (no need to download; this is purely a swarm/topic
-  // assertion).
   await dbB._joinCore(remoteA.core.key)
   const hex = remoteA.core.key.toString('hex')
   const entry = await dbB._joined.get(hex)
@@ -570,23 +514,18 @@ test('non-writable core honours seedReadOnly setting on join', async (t) => {
   t.is(entry.core.writable, false, 'B sees core as read-only')
   t.is(entry.discovery.isServer, true, 'announced because seedReadOnly is ON by default')
 
-  // Toggle off — re-applies to currently joined non-writable cores.
   await dbB.setSeedReadOnly(false)
   t.is(entry.discovery.isServer, false, 'announcement turned off after setSeedReadOnly(false)')
 
-  // And back on.
   await dbB.setSeedReadOnly(true)
   t.is(entry.discovery.isServer, true, 'announcement turned back on after setSeedReadOnly(true)')
 })
 
 test('seedReadOnly off means non-writable cores join as client-only', async (t) => {
-  // Fresh DB with the setting turned off BEFORE any non-writable core is
-  // joined — verifies the cached _seedReadOnly is read from config at open.
   const { bootstrap } = await createTestnet(3, t.teardown)
   const dir = await tmp(t)
 
-  // Persist seedReadOnly:false in a throwaway DB at `dir`, then close it
-  // (and its corestore) so we can reopen the same dir fresh.
+  // Persist the setting in a throwaway DB so dbB reopens the same dir fresh.
   const setupStore = new Corestore(dir)
   const setup = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: setupStore })
   await setup.ready()
@@ -638,7 +577,6 @@ test('a local-only join leaves discovery open to a later join', async (t) => {
   const listed = await dbB._joinCore(remoteA.core.key, { server: false, client: false })
   t.is(listed.discovery, null, 'local-only join creates no swarm session')
 
-  // Opening the repo afterwards must still be able to find peers.
   const opened = await dbB._joinCore(remoteA.core.key)
   t.is(opened.discovery.isClient, true, 'a later join looks up the topic')
   t.is(opened.discovery.isServer, true, 'a later join announces the topic')
@@ -672,9 +610,7 @@ test('concurrent joins share one core session', async (t) => {
 })
 
 test('seedReadOnly survives an unrelated config write', async (t) => {
-  // The schema stores seedReadOnly as a flag bit, so any written record
-  // decodes to a strict boolean. Writing config for another reason must not
-  // silently persist seedReadOnly:false and turn reseeding off.
+  // seedReadOnly is a flag bit, so an unrelated write must not silently persist it as false.
   const db = new GipLocalDB({
     swarm: new Hyperswarm({ bootstrap: (await createTestnet(3, t.teardown)).bootstrap }),
     store: await createStore(t)
