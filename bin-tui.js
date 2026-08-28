@@ -1,13 +1,16 @@
 #!/usr/bin/env bare
-
+const process = require('process')
+const path = require('path')
 const { header, summary, command, validate, arg, flag } = require('paparam')
-const { GipLocalDB } = require('./lib/db')
 const Id = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
-const process = require('process')
-const { argvOffset } = require('./lib/runtime')
+const { GipLocalDB } = require('./lib/db')
 const Pear = require('./lib/pear')
 const pkg = require('./package.json')
+
+const execName = path.basename(process.argv[0])
+const standalone = execName !== 'bare' && execName !== 'node'
+const argv = process.argv.slice(standalone ? 1 : 2)
 
 const green = (text) => `\x1b[32m${text}\x1b[0m`
 const dim = (text) => `\x1b[2m${text}\x1b[0m`
@@ -478,8 +481,8 @@ const cmd = command(
   }
 )
 
-async function main() {
-  const matched = cmd.parse(process.argv.slice(argvOffset))
+function main() {
+  const matched = cmd.parse(argv)
   const longlived = new Set(['seed'])
 
   if (matched !== null && longlived.has(matched.name)) {
