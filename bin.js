@@ -1,9 +1,9 @@
-#!/usr/bin/env bare
-
+#!/usr/bin/env node
 const goodbye = require('graceful-goodbye')
 const process = require('process')
 const readline = require('readline')
 const { Gip } = require('./lib/gip.js')
+const Pear = require('./lib/pear')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
@@ -54,6 +54,12 @@ const main = async () => {
   goodbye(async () => {
     await gip.close()
   })
+
+  const pear = process.env.GIP_NO_UPDATES ? null : new Pear({ dir })
+  if (pear !== null) {
+    pear.on('error', () => {})
+    pear.ready().catch(() => {})
+  }
 
   gip.setProgress(true)
   gip.ready()
@@ -127,6 +133,7 @@ const main = async () => {
   } finally {
     gip._debug('Closing gip')
     await gip.close()
+    if (pear !== null) await pear.close()
     process.exit(0)
   }
 }

@@ -1,10 +1,16 @@
 #!/usr/bin/env bare
-
+const process = require('process')
+const path = require('path')
 const { header, summary, command, validate, arg, flag } = require('paparam')
-const { GipLocalDB } = require('./lib/db')
 const Id = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
-const process = require('process')
+const { GipLocalDB } = require('./lib/db')
+const Pear = require('./lib/pear')
+const pkg = require('./package.json')
+
+const execName = path.basename(process.argv[0])
+const standalone = execName !== 'bare' && execName !== 'node'
+const argv = process.argv.slice(standalone ? 1 : 2)
 
 const green = (text) => `\x1b[32m${text}\x1b[0m`
 const dim = (text) => `\x1b[2m${text}\x1b[0m`
@@ -57,7 +63,7 @@ const regexRepoName = /^[a-zA-Z0-9_-]+$/
 
 async function setup(readonly = false) {
   try {
-    const db = new GipLocalDB({ readonly })
+    const db = new GipLocalDB({ dir: cmd.flags.storage, readonly })
     await db.ready()
     return db
   } catch (e) {
@@ -456,6 +462,9 @@ const cmd = command(
   'gip',
   header('Git Remote the P2P way'),
   summary('Gip allows you to manage your Git repositories. No servers, just Peers.'),
+  flag('--version|-v', 'Print the current version'),
+  flag('--no-updates', 'Disable peer-to-peer updates for this run'),
+  flag('--storage <dir>', 'Use a different gip storage directory (default ~/.gip)'),
   newRepo,
   addRepo,
   listRepos,
@@ -463,7 +472,33 @@ const cmd = command(
   seedRemotes,
   idCmd,
   configCmd,
-  () => console.log(cmd.help())
+  () => {
+    if (cmd.flags.version) {
+      console.log(`${pkg.productName || pkg.name} v${pkg.version}`)
+      return
+    }
+    console.log(cmd.help())
+  }
 )
 
-cmd.parse(process.argv.slice(2))
+function main() {
+  const matched = cmd.parse(argv)
+  const longlived = new Set(['seed'])
+
+  if (matched !== null && longlived.has(matched.name)) {
+    const { storage, updates } = cmd.flags
+    const pear = updates === false ? null : new Pear({ dir: storage })
+    if (pear === null) return
+    pear.on('error', () => {})
+    pear.on('updating', () => process.stderr.write(dim('Downloading update') + '\n'))
+    pear.on('update-applied', () =>
+      process.stderr.write(dim('Update applied — restart to run the new version') + '\n')
+    )
+    pear.ready().catch(console.error)
+    goodbye(async () => {
+      if (pear !== null) await pear.close()
+    })
+  }
+}
+
+main()

@@ -3,9 +3,8 @@ const createTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
 const tmp = require('test-tmp')
 const Corestore = require('corestore')
-
-const { GipLocalDB } = require('../lib/db')
 const { parseCommit } = require('gip-remote')
+const { GipLocalDB } = require('../lib/db')
 
 async function createStore(t) {
   const dir = await tmp(t)
