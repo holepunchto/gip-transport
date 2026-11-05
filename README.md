@@ -18,10 +18,10 @@ Or via `npx`:
 npx pear-install pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o
 ```
 
-This installs `gip` and `git-remote-git+pear` standalone binary executables to 
+This installs `gip` and `git-remote-git+pear` standalone binary executables to
 `%LOCALAPPDATA%\\Programs\\gip\\gip.exe` and `%LOCALAPPDATA%\\Programs\\gip\\git-remote-git+pear` on Windows else `~/.local/bin/gip` and `~/.local/bin/git-remote-git+pear` on MacOS and Linux.
 
-Manual install is also easy, download from [./releases](./releases) and move to the relevant folder. On MacOS and Linux the `$PATH` may also need to updated to point at `~/.local/bin`. 
+Manual install is also easy, download from [./releases](./releases) and move to the relevant folder. On MacOS and Linux the `$PATH` may also need to updated to point at `~/.local/bin`.
 
 Exectuables are evergreen and receive P2P OTA updates.
 
@@ -30,6 +30,7 @@ Exectuables are evergreen and receive P2P OTA updates.
 ```bash
 npm i -g gip-transport
 ```
+
 This installs `gip` and `git-remote-git+pear` as an npm package which **does not** receive peer-to-peer OTA updates and requires `node` to be on the system.
 
 ## Usage
