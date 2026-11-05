@@ -4,8 +4,8 @@ const path = require('path')
 const { header, summary, command, validate, arg, flag } = require('paparam')
 const Id = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
+const { isBare } = require('which-runtime')
 const { GipLocalDB } = require('./lib/db')
-const Pear = require('./lib/pear')
 const pkg = require('./package.json')
 
 const execName = path.basename(process.argv[0])
@@ -481,13 +481,18 @@ const cmd = command(
   }
 )
 
+function makePear(storage) {
+  if (!isBare) return null
+  const Pear = require('./lib/pear')
+  return new Pear({ dir: storage })
+}
 function main() {
   const matched = cmd.parse(argv)
   const longlived = new Set(['seed'])
 
   if (matched !== null && longlived.has(matched.name)) {
     const { storage, updates } = cmd.flags
-    const pear = updates === false ? null : new Pear({ dir: storage })
+    const pear = updates === false ? null : makePear(storage)
     if (pear === null) return
     pear.on('error', () => {})
     pear.on('updating', () => process.stderr.write(dim('Downloading update') + '\n'))

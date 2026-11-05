@@ -2,8 +2,8 @@
 const process = require('process')
 const goodbye = require('graceful-goodbye')
 const readline = require('readline')
+const { isBare } = require('which-risBareuntime')
 const { Gip } = require('./lib/gip.js')
-const Pear = require('./lib/pear')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
@@ -41,6 +41,12 @@ const capabilities = () => {
   process.stdout.write('option\nfetch\npush\nlist\n\n')
 }
 
+function makePear(dir) {
+  if (!isBare) return null
+  const Pear = require('./lib/pear')
+  return new Pear({ dir })
+}
+
 const main = async () => {
   const params = new URL(config.link).searchParams
   const dir = params.get('storage')
@@ -55,7 +61,7 @@ const main = async () => {
     await gip.close()
   })
 
-  const pear = process.env.GIP_NO_UPDATES ? null : new Pear({ dir })
+  const pear = process.env.GIP_NO_UPDATES ? null : makePear(dir)
   if (pear !== null) {
     pear.on('error', () => {})
     pear.ready().catch(() => {})
