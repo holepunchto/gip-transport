@@ -1,6 +1,5 @@
-#!/usr/bin/env node
-const goodbye = require('graceful-goodbye')
 const process = require('process')
+const goodbye = require('graceful-goodbye')
 const readline = require('readline')
 const { Gip } = require('./lib/gip.js')
 const Pear = require('./lib/pear')

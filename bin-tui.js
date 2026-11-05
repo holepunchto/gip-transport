@@ -1,4 +1,3 @@
-#!/usr/bin/env bare
 const process = require('process')
 const path = require('path')
 const { header, summary, command, validate, arg, flag } = require('paparam')

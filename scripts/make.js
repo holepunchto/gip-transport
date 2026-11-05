@@ -50,6 +50,7 @@ const opts = { cwd: root, stdio: 'inherit' }
 const deployment = path.join(root, 'out')
 
 for (const bin of selected.length > 0 ? selected : bins) {
+  if (bin === 'gip-transport') continue
   const script = `make:${bin}:${host}`
   const command = pkg.scripts[script]
   if (!command) {
