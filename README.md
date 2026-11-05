@@ -6,25 +6,31 @@ Uses [gip-remote](https://github.com/holepunchto/gip-remote) for the underlying 
 
 ## Installation
 
-**Either** install self-updating standalone binaries with [`pear`](https://install.pears.com):
+Install self-updating standalone binaries with [`pear`](https://install.pears.com):
 
 ```bash
 pear install pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o
 ```
 
-**Or** gip can also be installed peer-to-peer as a self-updating standalone binary with `npx`:
+Or via `npx`:
 
 ```bash
-npx gip-transport
+npx pear-install pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o
 ```
 
-**Alternatively** it can be installed as an npm exectuable (which **does not** receive peer-to-peer OTA updates):
+This installs `gip` and `git-remote-git+pear` standalone binary executables to 
+`%LOCALAPPDATA%\\Programs\\gip\\gip.exe` and `%LOCALAPPDATA%\\Programs\\gip\\git-remote-git+pear` on Windows else `~/.local/bin/gip` and `~/.local/bin/git-remote-git+pear` on MacOS and Linux.
+
+Manual install is also easy, download from [./releases](./releases) and move to the relevant folder. On MacOS and Linux the `$PATH` may also need to updated to point at `~/.local/bin`. 
+
+Exectuables are evergreen and receive P2P OTA updates.
+
+**Alternatively** it can also be installed as a global npm package:
 
 ```bash
 npm i -g gip-transport
 ```
-
-Whichever approach is used, this installs `git-remote-git+pear` which git will automatically use when accessing `git+pear://` remotes, and the `gip` CLI for managing repositories and configuration.
+This installs `gip` and `git-remote-git+pear` as an npm package which **does not** receive peer-to-peer OTA updates and requires `node` to be on the system.
 
 ## Usage
 

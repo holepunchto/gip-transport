@@ -56,6 +56,10 @@
     "test-tmp": "^1.4.0"
   },
   "imports": {
+    "#spinner": {
+      "bare": "bare-spinner",
+      "default": "./lib/node-spinner.js"
+    },
     "buffer": {
       "bare": "bare-buffer",
       "default": "buffer"
