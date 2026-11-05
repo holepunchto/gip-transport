@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const process = require('process')
 const { spawnSync } = require('child_process')
+const { isWindows } = require('which-runtime')
 
 const { GipLocalDB } = require('../lib/db')
 
@@ -16,9 +17,25 @@ async function setup(t) {
   const bin = path.join(dir, 'bin')
   fs.mkdirSync(bin)
   const shim = path.join(bin, 'git-remote-git+pear')
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
-  fs.chmodSync(shim, 0o755)
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+
+  if (isWindows) {
+    // git only probes `<cmd>.exe` and the bare name, never `.cmd` or `.bat`, so the shim
+    // stays extensionless. It then reads the shebang and runs that interpreter, looked up
+    // by basename — pointing it at node avoids needing `sh` on PATH. The interpreter path
+    // must contain a separator and fit in the first 100 bytes or git ignores the shebang.
+    fs.writeFileSync(shim, `#!${process.execPath}\nrequire(${JSON.stringify(BIN)})\n`)
+  } else {
+    fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
+    fs.chmodSync(shim, 0o755)
+  }
+
+  // Windows names the variable `Path`, so spreading process.env and adding `PATH` leaves
+  // both keys set and the child may resolve the one without the shim dir. Its separator
+  // is `;` too, and a `:` would have glued the shim dir onto the next entry.
+  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toLowerCase() !== 'path') env[key] = value
+  }
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
