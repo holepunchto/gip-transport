@@ -2,7 +2,7 @@
 const process = require('process')
 const goodbye = require('graceful-goodbye')
 const readline = require('readline')
-const { isBare } = require('which-risBareuntime')
+const { isBare } = require('which-runtime')
 const { Gip } = require('./lib/gip.js')
 
 const ignorePipeError = (err) => {
