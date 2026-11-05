@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const process = require('process')
 const path = require('path')
 const { header, summary, command, validate, arg, flag } = require('paparam')

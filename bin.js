@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const process = require('process')
 const goodbye = require('graceful-goodbye')
 const readline = require('readline')
