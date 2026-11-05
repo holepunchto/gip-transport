@@ -20,10 +20,12 @@ async function setup(t) {
 
   if (isWindows) {
     // git only probes `<cmd>.exe` and the bare name, never `.cmd` or `.bat`, so the shim
-    // stays extensionless. It then reads the shebang and runs that interpreter, looked up
-    // by basename — pointing it at node avoids needing `sh` on PATH. The interpreter path
-    // must contain a separator and fit in the first 100 bytes or git ignores the shebang.
-    fs.writeFileSync(shim, `#!${process.execPath}\nrequire(${JSON.stringify(BIN)})\n`)
+    // stays extensionless. git then reads the shebang, but keeps only the basename after
+    // the last separator and resolves that on PATH, so the leading `/` is just the marker
+    // it needs to accept the line. Naming the runtime rather than spelling out its path
+    // also dodges git reading only the first 100 bytes of the file.
+    const runtime = path.basename(process.execPath)
+    fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
   } else {
     fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
     fs.chmodSync(shim, 0o755)
@@ -31,8 +33,11 @@ async function setup(t) {
 
   // Windows names the variable `Path`, so spreading process.env and adding `PATH` leaves
   // both keys set and the child may resolve the one without the shim dir. Its separator
-  // is `;` too, and a `:` would have glued the shim dir onto the next entry.
-  const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` }
+  // is `;` too, and a `:` would have glued the shim dir onto the next entry. The runtime
+  // dir has to be on there as well: under bare it lives in node_modules, off PATH, and
+  // git resolves the shebang interpreter by name.
+  const runtimeDir = path.dirname(process.execPath)
+  const env = { PATH: [bin, runtimeDir, process.env.PATH].join(path.delimiter) }
   for (const [key, value] of Object.entries(process.env)) {
     if (key.toLowerCase() !== 'path') env[key] = value
   }
