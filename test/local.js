@@ -9,10 +9,6 @@ const { GipLocalDB } = require('../lib/db')
 async function createStore(t) {
   const dir = await tmp(t)
   const store = new Corestore(dir)
-  // Teardowns run in registration order, and this one is registered inside the
-  // GipLocalDB(...) argument list, so it lands before the db's own teardown.
-  // Without an order the store would close under a still-open db, whose swarm
-  // would then replicate an inbound connection into a closed store.
   t.teardown(() => store.close(), { order: 1 })
   return store
 }

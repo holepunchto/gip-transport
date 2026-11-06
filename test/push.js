@@ -22,11 +22,6 @@ async function setup(t) {
   const shim = path.join(bin, 'git-remote-git+pear')
 
   if (isWindows) {
-    // git only probes `<cmd>.exe` and the bare name, never `.cmd` or `.bat`, so the shim
-    // stays extensionless. git then reads the shebang, but keeps only the basename after
-    // the last separator and resolves that on PATH, so the leading `/` is just the marker
-    // it needs to accept the line. Naming the runtime rather than spelling out its path
-    // also dodges git reading only the first 100 bytes of the file.
     const runtime = path.basename(process.execPath)
     fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
   } else {
@@ -34,19 +29,13 @@ async function setup(t) {
     fs.chmodSync(shim, 0o755)
   }
 
-  // Windows names the variable `Path`, so spreading process.env and adding `PATH` leaves
-  // both keys set and the child may resolve the one without the shim dir. Its separator
-  // is `;` too, and a `:` would have glued the shim dir onto the next entry. The runtime
-  // dir has to be on there as well: under bare it lives in node_modules, off PATH, and
-  // git resolves the shebang interpreter by name.
   const runtimeDir = path.dirname(process.execPath)
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (key.toLowerCase() !== 'path') env[key] = value
   }
   env.PATH = [bin, runtimeDir, process.env.PATH].join(path.delimiter)
-  // The helper otherwise checks for updates over the public DHT, which this round-trip
-  // never exercises and which leaves a swarm to tear down before it can exit.
+
   env.GIP_NO_UPDATES = '1'
 
   const repo = path.join(dir, 'repo')
@@ -62,8 +51,6 @@ async function setup(t) {
         'user.name=t',
         '-c',
         'init.defaultBranch=main',
-        // Git for Windows defaults core.autocrlf to true, which rewrites LF to CRLF on
-        // checkout and makes a byte-for-byte round-trip assertion fail there only.
         '-c',
         'core.autocrlf=false',
         ...args
