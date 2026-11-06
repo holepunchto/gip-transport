@@ -9,10 +9,14 @@ const { isWindows } = require('which-runtime')
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
-// Only a bound on a hang, not a performance budget: the slowest of these takes ~10s.
-const HELPER_TIMEOUT = 90000
+// Bounds one helper process, not a whole test, and has to fire before brittle's per-test
+// timeout or brittle reports first and the helper's stderr is lost.
+const HELPER_TIMEOUT = 25000
+// Each test spawns several helpers, so it needs room for all of them to run slowly.
+const TEST_TIMEOUT = 120000
 
 async function setup(t) {
+  t.timeout(TEST_TIMEOUT)
   const dir = await tmp(t)
 
   // git resolves the transport by scheme from PATH.
@@ -57,11 +61,37 @@ async function setup(t) {
   // The helper otherwise checks for updates over the public DHT, which this round-trip
   // never exercises and which leaves a swarm to tear down before it can exit.
   env.GIP_NO_UPDATES = '1'
+  // Three independent views of the same exchange, so one failing run is enough to place a
+  // hang: the helper's step trace and heartbeat, its own debug log, and git's record of
+  // what it sent and was waiting for. All to files, because a hang loses piped stderr.
+  const helperTrace = path.join(dir, 'helper-trace.log')
+  const gitTrace = path.join(dir, 'git-trace.log')
+  env.GIP_TRACE = helperTrace
+  env.GIP_VERBOSITY = '3'
+  // git only treats GIT_TRACE as a file when it parses as absolute; forward slashes are
+  // accepted on Windows too and sidestep any question about the backslash form.
+  env.GIT_TRACE = gitTrace.replace(/\\/g, '/')
+  env.GIT_TRANSPORT_HELPER_DEBUG = '1'
+
+  const read = (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8').trimEnd() || '(empty)'
+    } catch {
+      return '(not created)'
+    }
+  }
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
 
   const git = (args, opts = {}) => {
+    const command = ['git', ...args].join(' ')
+    for (const file of [helperTrace, gitTrace]) {
+      try {
+        fs.appendFileSync(file, `\n===== ${command} =====\n`)
+      } catch {}
+    }
+
     const result = spawnSync(
       'git',
       ['-c', 'user.email=t@t.t', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args],
@@ -69,7 +99,18 @@ async function setup(t) {
     )
     const stdout = result.output?.[1]?.toString() ?? ''
     const stderr = result.output?.[2]?.toString() ?? ''
-    if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${stderr || stdout}`)
+    if (result.status !== 0 || result.error) {
+      throw new Error(
+        [
+          `git ${args[0]} failed: status=${result.status} signal=${result.signal ?? 'none'}` +
+            (result.error ? ` error=${result.error.message}` : ''),
+          `--- git stderr ---\n${stderr.trimEnd() || '(empty)'}`,
+          `--- git stdout ---\n${stdout.trimEnd() || '(empty)'}`,
+          `--- helper trace ---\n${read(helperTrace)}`,
+          `--- git trace ---\n${read(gitTrace)}`
+        ].join('\n')
+      )
+    }
     return stdout + stderr
   }
 
@@ -112,7 +153,7 @@ function cloneAndLog(ctx, name, ref) {
 test.solo('push and clone round-trip', async (t) => {
   console.log('a')
   const ctx = await setup(t)
-console.log('b')
+  console.log('b')
   ctx.git(['push', ctx.url, '--all'])
 
   const log = cloneAndLog(ctx, 'clone')
