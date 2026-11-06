@@ -4,21 +4,39 @@ const fs = require('fs')
 const path = require('path')
 const process = require('process')
 const { spawnSync } = require('child_process')
+const { isWindows } = require('which-runtime')
 
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
+// These drive real git through a p2p transport, so they are slow on a loaded CI runner.
+const TEST_TIMEOUT = 120000
 
 async function setup(t) {
+  t.timeout(TEST_TIMEOUT)
   const dir = await tmp(t)
 
   // git resolves the transport by scheme from PATH.
   const bin = path.join(dir, 'bin')
   fs.mkdirSync(bin)
   const shim = path.join(bin, 'git-remote-git+pear')
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
-  fs.chmodSync(shim, 0o755)
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+
+  if (isWindows) {
+    const runtime = path.basename(process.execPath)
+    fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
+  } else {
+    fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
+    fs.chmodSync(shim, 0o755)
+  }
+
+  const runtimeDir = path.dirname(process.execPath)
+  const env = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toLowerCase() !== 'path') env[key] = value
+  }
+  env.PATH = [bin, runtimeDir, process.env.PATH].join(path.delimiter)
+
+  env.GIP_NO_UPDATES = '1'
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
@@ -26,7 +44,17 @@ async function setup(t) {
   const git = (args, opts = {}) => {
     const result = spawnSync(
       'git',
-      ['-c', 'user.email=t@t.t', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args],
+      [
+        '-c',
+        'user.email=t@t.t',
+        '-c',
+        'user.name=t',
+        '-c',
+        'init.defaultBranch=main',
+        '-c',
+        'core.autocrlf=false',
+        ...args
+      ],
       { cwd: opts.cwd ?? repo, env, stdio: 'pipe' }
     )
     const stdout = result.output?.[1]?.toString() ?? ''
@@ -73,7 +101,6 @@ function cloneAndLog(ctx, name, ref) {
 
 test('push and clone round-trip', async (t) => {
   const ctx = await setup(t)
-
   ctx.git(['push', ctx.url, '--all'])
 
   const log = cloneAndLog(ctx, 'clone')

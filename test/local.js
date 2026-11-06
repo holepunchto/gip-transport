@@ -3,14 +3,13 @@ const createTestnet = require('hyperdht/testnet')
 const Hyperswarm = require('hyperswarm')
 const tmp = require('test-tmp')
 const Corestore = require('corestore')
-
-const { GipLocalDB } = require('../lib/db')
 const { parseCommit } = require('gip-remote')
+const { GipLocalDB } = require('../lib/db')
 
 async function createStore(t) {
   const dir = await tmp(t)
   const store = new Corestore(dir)
-  t.teardown(() => store.close())
+  t.teardown(() => store.close(), { order: 1 })
   return store
 }
 
@@ -458,7 +457,7 @@ test('seedReadOnly persists across db restarts', async (t) => {
   await store1.close()
 
   const store2 = new Corestore(dir)
-  t.teardown(() => store2.close())
+  t.teardown(() => store2.close(), { order: 1 })
   const db2 = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: store2 })
   t.teardown(() => db2.close())
   await db2.ready()
@@ -542,7 +541,7 @@ test('seedReadOnly off means non-writable cores join as client-only', async (t) 
   const remoteA = await dbA.createRemote('shared-off')
 
   const storeB = new Corestore(dir)
-  t.teardown(() => storeB.close())
+  t.teardown(() => storeB.close(), { order: 1 })
   const dbB = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: storeB })
   t.teardown(() => dbB.close())
   await dbB.ready()

@@ -1,9 +1,10 @@
-#!/usr/bin/env bare
-
-const goodbye = require('graceful-goodbye')
+#!/usr/bin/env node
 const process = require('process')
+const goodbye = require('graceful-goodbye')
 const readline = require('readline')
+const { isBare } = require('which-runtime')
 const { Gip } = require('./lib/gip.js')
+const stdout = require('./lib/stdout')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
@@ -38,7 +39,13 @@ try {
 }
 
 const capabilities = () => {
-  process.stdout.write('option\nfetch\npush\nlist\n\n')
+  stdout.write('option\nfetch\npush\nlist\n\n')
+}
+
+function makePear(dir) {
+  if (!isBare) return null
+  const Pear = require('./lib/pear')
+  return new Pear({ dir })
 }
 
 const main = async () => {
@@ -54,6 +61,12 @@ const main = async () => {
   goodbye(async () => {
     await gip.close()
   })
+
+  const pear = process.env.GIP_NO_UPDATES ? null : makePear(dir)
+  if (pear !== null) {
+    pear.on('error', () => {})
+    pear.ready().catch(() => {})
+  }
 
   gip.setProgress(true)
   gip.ready()
@@ -88,7 +101,7 @@ const main = async () => {
                 gip.setFollowTags(line.split(' ')[2] === 'true')
                 break
             }
-            process.stdout.write('ok\n')
+            stdout.write('ok\n')
           }
           break
         case 'list': {
@@ -127,6 +140,7 @@ const main = async () => {
   } finally {
     gip._debug('Closing gip')
     await gip.close()
+    if (pear !== null) await pear.close()
     process.exit(0)
   }
 }
