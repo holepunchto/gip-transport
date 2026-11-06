@@ -9,6 +9,8 @@ const { isWindows } = require('which-runtime')
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
+// Only a bound on a hang, not a performance budget: the slowest of these takes ~10s.
+const HELPER_TIMEOUT = 90000
 
 async function setup(t) {
   const dir = await tmp(t)
@@ -25,7 +27,17 @@ async function setup(t) {
     // it needs to accept the line. Naming the runtime rather than spelling out its path
     // also dodges git reading only the first 100 bytes of the file.
     const runtime = path.basename(process.execPath)
-    fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
+    // bare-subprocess's spawnSync ignores `timeout`, and brittle cannot interrupt a
+    // synchronous spawn, so a helper that never exits hangs the whole run with nothing
+    // reported. The shim is the only place left that can bound it. Globals only in here:
+    // it sits in a tmp dir, so bare cannot resolve packages such as `process` from it,
+    // and `process` is not a global under bare the way `Bare` is not under node.
+    const watchdog =
+      `setTimeout(() => {\n` +
+      `  console.error('gip test shim: helper still alive after ${HELPER_TIMEOUT}ms, forcing exit')\n` +
+      `  ;(typeof Bare === 'undefined' ? process : Bare).exit(70)\n` +
+      `}, ${HELPER_TIMEOUT})\n`
+    fs.writeFileSync(shim, `#!/${runtime}\n${watchdog}require(${JSON.stringify(BIN)})\n`)
   } else {
     fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
     fs.chmodSync(shim, 0o755)
@@ -37,10 +49,14 @@ async function setup(t) {
   // dir has to be on there as well: under bare it lives in node_modules, off PATH, and
   // git resolves the shebang interpreter by name.
   const runtimeDir = path.dirname(process.execPath)
-  const env = { PATH: [bin, runtimeDir, process.env.PATH].join(path.delimiter) }
+  const env = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (key.toLowerCase() !== 'path') env[key] = value
   }
+  env.PATH = [bin, runtimeDir, process.env.PATH].join(path.delimiter)
+  // The helper otherwise checks for updates over the public DHT, which this round-trip
+  // never exercises and which leaves a swarm to tear down before it can exit.
+  env.GIP_NO_UPDATES = '1'
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
@@ -93,9 +109,10 @@ function cloneAndLog(ctx, name, ref) {
   return ctx.git(['log', '--oneline', '--format=%s'], { cwd: dest }).trim().split('\n')
 }
 
-test('push and clone round-trip', async (t) => {
+test.solo('push and clone round-trip', async (t) => {
+  console.log('a')
   const ctx = await setup(t)
-
+console.log('b')
   ctx.git(['push', ctx.url, '--all'])
 
   const log = cloneAndLog(ctx, 'clone')
