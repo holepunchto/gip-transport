@@ -5,6 +5,7 @@ const goodbye = require('graceful-goodbye')
 const readline = require('readline')
 const { isBare } = require('which-runtime')
 const { Gip } = require('./lib/gip.js')
+const stdout = require('./lib/stdout')
 
 // GIP_TRACE=<file> appends a timestamped trace of this process. Written synchronously and
 // to a file rather than stderr so that it survives a hang, a kill, and a full stdio pipe.
@@ -29,15 +30,6 @@ if (TRACE) {
   // crash. Unref'd so it never delays exit on its own.
   const beat = setInterval(() => trace(`alive, last step: ${step}`), 2000)
   beat.unref?.()
-
-  // Everything git reads from us goes through here, so this says whether a reply was
-  // written at all, and whether it was taken immediately or left queued. Pass-through.
-  const write = process.stdout.write.bind(process.stdout)
-  process.stdout.write = (chunk, ...rest) => {
-    const taken = write(chunk, ...rest)
-    trace(`stdout ${taken === false ? 'QUEUED' : 'write'}: ${JSON.stringify(String(chunk))}`)
-    return taken
-  }
 }
 
 const ignorePipeError = (err) => {
@@ -45,34 +37,6 @@ const ignorePipeError = (err) => {
   trace(`pipe error (${err.code}): ${err.message}`)
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
 }
-
-// git reads the push result from our stdout and reports a failed push if it never arrives,
-// so the last write has to reach the pipe before process.exit tears the process down.
-// Bounded: a flush that never completes must not replace a lost reply with a hang.
-const flushStdout = () =>
-  new Promise((resolve) => {
-    let done = false
-    const finish = () => {
-      if (done) return
-      done = true
-      trace('stdout flushed')
-      resolve()
-    }
-
-    const timer = setTimeout(() => {
-      trace('stdout flush timed out')
-      finish()
-    }, 2000)
-    timer.unref?.()
-
-    try {
-      process.stdout.write('', finish)
-    } catch {
-      finish()
-    }
-  })
-if (process.stdin.on) process.stdin.on('error', ignorePipeError)
-if (process.stdout.on) process.stdout.on('error', ignorePipeError)
 
 const argv = process.argv.slice(0)
 const remote = argv[2]
@@ -104,7 +68,7 @@ try {
 const forcedVerbosity = process.env.GIP_VERBOSITY ? Number(process.env.GIP_VERBOSITY) : null
 
 const capabilities = () => {
-  process.stdout.write('option\nfetch\npush\nlist\n\n')
+  stdout.write('option\nfetch\npush\nlist\n\n')
 }
 
 function makePear(dir) {
@@ -183,7 +147,7 @@ const main = async () => {
                 gip.setFollowTags(line.split(' ')[2] === 'true')
                 break
             }
-            process.stdout.write('ok\n')
+            stdout.write('ok\n')
           }
           break
         case 'list': {
@@ -238,9 +202,7 @@ const main = async () => {
     await gip.close()
     at('gip.close end')
     if (pear !== null) await pear.close()
-    at('pear closed, flushing stdout')
-    await flushStdout()
-    at('exiting 0')
+    at('pear closed, exiting 0')
     process.exit(0)
   }
 }
