@@ -139,7 +139,7 @@ Progress is written to stderr to avoid interfering with git protocol communicati
 
 ## Build
 
-`npm run make` builds all three binaries for the host:
+`npm run make` builds both binaries for the host:
 
 ```bash
 npm run make
@@ -149,7 +149,6 @@ Or one at a time:
 
 ```bash
 npm run make:gip
-npm run make:git-pear
 npm run make:git-remote-git+pear
 ```
 
@@ -164,7 +163,6 @@ out/
     darwin-arm64/
       app/
         gip
-        git-pear
         git-remote-git+pear
 ```
 
