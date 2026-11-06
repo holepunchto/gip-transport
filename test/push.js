@@ -159,7 +159,7 @@ function cloneAndLog(ctx, name, ref) {
   return ctx.git(['log', '--oneline', '--format=%s'], { cwd: dest }).trim().split('\n')
 }
 
-test.solo('push and clone round-trip', async (t) => {
+test('push and clone round-trip', async (t) => {
   const ctx = await setup(t)
   ctx.git(['push', ctx.url, '--all'])
 

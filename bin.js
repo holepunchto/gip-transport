@@ -32,12 +32,6 @@ if (TRACE) {
   beat.unref?.()
 }
 
-const ignorePipeError = (err) => {
-  // Swallowing this is how a failed reply to git becomes invisible, so record it.
-  trace(`pipe error (${err.code}): ${err.message}`)
-  if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
-}
-
 const argv = process.argv.slice(0)
 const remote = argv[2]
 let url = argv[3]
