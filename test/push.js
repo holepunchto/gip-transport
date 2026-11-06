@@ -57,20 +57,23 @@ async function setup(t) {
   // The helper otherwise checks for updates over the public DHT, which this round-trip
   // never exercises and which leaves a swarm to tear down before it can exit.
   env.GIP_NO_UPDATES = '1'
-  // Three views of the same exchange: the helper's step trace and heartbeat, its own debug
-  // log, and git's record of what it sent. To files, because a hang loses piped stderr.
+  // Deliberately narrow: CI truncates long output, so only what shows whether the helper
+  // wrote its push reply and whether git read it. No GIT_TRACE — the spawn details are
+  // already known — and verbosity 2, so gip's own errors show without echoing every line.
   const helperTrace = path.join(dir, 'helper-trace.log')
-  const gitTrace = path.join(dir, 'git-trace.log')
   env.GIP_TRACE = helperTrace
-  env.GIP_VERBOSITY = '3'
-  env.GIT_TRACE = gitTrace.replace(/\\/g, '/')
+  env.GIP_VERBOSITY = '2'
   env.GIT_TRANSPORT_HELPER_DEBUG = '1'
 
-  const read = (file) => {
+  const lines = (text) => text.split(/\r?\n/).filter((line) => line.trim())
+  const tail = (list, max) => (list.length ? list.slice(-max).join('\n') : '(none)')
+
+  const readTrace = () => {
     try {
-      return fs.readFileSync(file, 'utf8').trimEnd() || '(empty)'
+      // Steps and stdout writes; heartbeats only matter when something hangs.
+      return lines(fs.readFileSync(helperTrace, 'utf8')).filter((l) => !l.includes('alive, last'))
     } catch {
-      return '(not created)'
+      return []
     }
   }
 
@@ -78,12 +81,6 @@ async function setup(t) {
   fs.mkdirSync(repo)
 
   const git = (args, opts = {}) => {
-    for (const file of [helperTrace, gitTrace]) {
-      try {
-        fs.appendFileSync(file, `\n===== git ${args.join(' ')} =====\n`)
-      } catch {}
-    }
-
     const result = spawnSync(
       'git',
       [
@@ -104,14 +101,22 @@ async function setup(t) {
     const stdout = result.output?.[1]?.toString() ?? ''
     const stderr = result.output?.[2]?.toString() ?? ''
     if (result.status !== 0 || result.error) {
+      const all = lines(stderr).concat(lines(stdout))
+      // git's verdict: its own messages, with the protocol log and gip's chatter removed.
+      const verdict = all.filter((l) => !/^(Debug: |Gip \[)/.test(l))
+      // What git sent and what it read back. 'Waiting...' repeats and says nothing.
+      const protocol = all
+        .filter((l) => l.startsWith('Debug: Remote helper:'))
+        .filter((l) => !l.includes('Waiting'))
+        .map((l) => l.replace('Debug: Remote helper:', '').trim() || '(blank line)')
+
       throw new Error(
         [
-          `git ${args[0]} failed: status=${result.status} signal=${result.signal ?? 'none'}` +
+          `git ${args[0]} failed: status=${result.status}` +
             (result.error ? ` error=${result.error.message}` : ''),
-          `--- git stderr ---\n${stderr.trimEnd() || '(empty)'}`,
-          `--- git stdout ---\n${stdout.trimEnd() || '(empty)'}`,
-          `--- helper trace ---\n${read(helperTrace)}`,
-          `--- git trace ---\n${read(gitTrace)}`
+          `--- git says (last 6) ---\n${tail(verdict, 6)}`,
+          `--- protocol, git's view (last 12) ---\n${tail(protocol, 12)}`,
+          `--- helper (last 24) ---\n${tail(readTrace(), 24)}`
         ].join('\n')
       )
     }

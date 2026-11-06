@@ -29,11 +29,48 @@ if (TRACE) {
   // crash. Unref'd so it never delays exit on its own.
   const beat = setInterval(() => trace(`alive, last step: ${step}`), 2000)
   beat.unref?.()
+
+  // Everything git reads from us goes through here, so this says whether a reply was
+  // written at all, and whether it was taken immediately or left queued. Pass-through.
+  const write = process.stdout.write.bind(process.stdout)
+  process.stdout.write = (chunk, ...rest) => {
+    const taken = write(chunk, ...rest)
+    trace(`stdout ${taken === false ? 'QUEUED' : 'write'}: ${JSON.stringify(String(chunk))}`)
+    return taken
+  }
 }
 
 const ignorePipeError = (err) => {
+  // Swallowing this is how a failed reply to git becomes invisible, so record it.
+  trace(`pipe error (${err.code}): ${err.message}`)
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
 }
+
+// git reads the push result from our stdout and reports a failed push if it never arrives,
+// so the last write has to reach the pipe before process.exit tears the process down.
+// Bounded: a flush that never completes must not replace a lost reply with a hang.
+const flushStdout = () =>
+  new Promise((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      trace('stdout flushed')
+      resolve()
+    }
+
+    const timer = setTimeout(() => {
+      trace('stdout flush timed out')
+      finish()
+    }, 2000)
+    timer.unref?.()
+
+    try {
+      process.stdout.write('', finish)
+    } catch {
+      finish()
+    }
+  })
 if (process.stdin.on) process.stdin.on('error', ignorePipeError)
 if (process.stdout.on) process.stdout.on('error', ignorePipeError)
 
@@ -77,7 +114,7 @@ function makePear(dir) {
 }
 
 const main = async () => {
-  at(`main, argv=${JSON.stringify(argv.slice(2))}`)
+  at('main')
   const params = new URL(config.link).searchParams
   const dir = params.get('storage')
   at(`parsed url, storage=${JSON.stringify(dir)}`)
@@ -124,7 +161,6 @@ const main = async () => {
 
       const command = line.split(' ')[0]
       gip._verbose('Line: ' + line)
-      at(`cmd begin: ${command}`)
 
       switch (command) {
         case 'capabilities':
@@ -191,7 +227,6 @@ const main = async () => {
         default:
           console.error('Unexpected message:', line)
       }
-      at(`cmd end: ${command}`)
     }
     at('stdin ended, loop finished')
   } catch (e) {
@@ -203,7 +238,9 @@ const main = async () => {
     await gip.close()
     at('gip.close end')
     if (pear !== null) await pear.close()
-    at('pear closed, exiting 0')
+    at('pear closed, flushing stdout')
+    await flushStdout()
+    at('exiting 0')
     process.exit(0)
   }
 }
