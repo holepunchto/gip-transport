@@ -52,7 +52,19 @@ async function setup(t) {
   const git = (args, opts = {}) => {
     const result = spawnSync(
       'git',
-      ['-c', 'user.email=t@t.t', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args],
+      [
+        '-c',
+        'user.email=t@t.t',
+        '-c',
+        'user.name=t',
+        '-c',
+        'init.defaultBranch=main',
+        // Git for Windows defaults core.autocrlf to true, which rewrites LF to CRLF on
+        // checkout and makes a byte-for-byte round-trip assertion fail there only.
+        '-c',
+        'core.autocrlf=false',
+        ...args
+      ],
       { cwd: opts.cwd ?? repo, env, stdio: 'pipe' }
     )
     const stdout = result.output?.[1]?.toString() ?? ''
