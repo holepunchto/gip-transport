@@ -109,6 +109,7 @@ async function setup(t) {
           `git ${args[0]} failed: status=${result.status} signal=${result.signal ?? 'none'}` +
             (result.error ? ` error=${result.error.message}` : ''),
           `--- git stderr ---\n${stderr.trimEnd() || '(empty)'}`,
+          `--- git stdout ---\n${stdout.trimEnd() || '(empty)'}`,
           `--- helper trace ---\n${read(helperTrace)}`,
           `--- git trace ---\n${read(gitTrace)}`
         ].join('\n')
