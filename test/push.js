@@ -9,14 +9,8 @@ const { isWindows } = require('which-runtime')
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
-// Bounds one helper process, not a whole test, and has to fire before brittle's per-test
-// timeout or brittle reports first and the helper's stderr is lost.
-const HELPER_TIMEOUT = 25000
-// Each test spawns several helpers, so it needs room for all of them to run slowly.
-const TEST_TIMEOUT = 120000
 
 async function setup(t) {
-  t.timeout(TEST_TIMEOUT)
   const dir = await tmp(t)
 
   // git resolves the transport by scheme from PATH.
@@ -31,17 +25,7 @@ async function setup(t) {
     // it needs to accept the line. Naming the runtime rather than spelling out its path
     // also dodges git reading only the first 100 bytes of the file.
     const runtime = path.basename(process.execPath)
-    // bare-subprocess's spawnSync ignores `timeout`, and brittle cannot interrupt a
-    // synchronous spawn, so a helper that never exits hangs the whole run with nothing
-    // reported. The shim is the only place left that can bound it. Globals only in here:
-    // it sits in a tmp dir, so bare cannot resolve packages such as `process` from it,
-    // and `process` is not a global under bare the way `Bare` is not under node.
-    const watchdog =
-      `setTimeout(() => {\n` +
-      `  console.error('gip test shim: helper still alive after ${HELPER_TIMEOUT}ms, forcing exit')\n` +
-      `  ;(typeof Bare === 'undefined' ? process : Bare).exit(70)\n` +
-      `}, ${HELPER_TIMEOUT})\n`
-    fs.writeFileSync(shim, `#!/${runtime}\n${watchdog}require(${JSON.stringify(BIN)})\n`)
+    fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
   } else {
     fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
     fs.chmodSync(shim, 0o755)
@@ -61,37 +45,11 @@ async function setup(t) {
   // The helper otherwise checks for updates over the public DHT, which this round-trip
   // never exercises and which leaves a swarm to tear down before it can exit.
   env.GIP_NO_UPDATES = '1'
-  // Three independent views of the same exchange, so one failing run is enough to place a
-  // hang: the helper's step trace and heartbeat, its own debug log, and git's record of
-  // what it sent and was waiting for. All to files, because a hang loses piped stderr.
-  const helperTrace = path.join(dir, 'helper-trace.log')
-  const gitTrace = path.join(dir, 'git-trace.log')
-  env.GIP_TRACE = helperTrace
-  env.GIP_VERBOSITY = '3'
-  // git only treats GIT_TRACE as a file when it parses as absolute; forward slashes are
-  // accepted on Windows too and sidestep any question about the backslash form.
-  env.GIT_TRACE = gitTrace.replace(/\\/g, '/')
-  env.GIT_TRANSPORT_HELPER_DEBUG = '1'
-
-  const read = (file) => {
-    try {
-      return fs.readFileSync(file, 'utf8').trimEnd() || '(empty)'
-    } catch {
-      return '(not created)'
-    }
-  }
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
 
   const git = (args, opts = {}) => {
-    const command = ['git', ...args].join(' ')
-    for (const file of [helperTrace, gitTrace]) {
-      try {
-        fs.appendFileSync(file, `\n===== ${command} =====\n`)
-      } catch {}
-    }
-
     const result = spawnSync(
       'git',
       ['-c', 'user.email=t@t.t', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args],
@@ -99,18 +57,7 @@ async function setup(t) {
     )
     const stdout = result.output?.[1]?.toString() ?? ''
     const stderr = result.output?.[2]?.toString() ?? ''
-    if (result.status !== 0 || result.error) {
-      throw new Error(
-        [
-          `git ${args[0]} failed: status=${result.status} signal=${result.signal ?? 'none'}` +
-            (result.error ? ` error=${result.error.message}` : ''),
-          `--- git stderr ---\n${stderr.trimEnd() || '(empty)'}`,
-          `--- git stdout ---\n${stdout.trimEnd() || '(empty)'}`,
-          `--- helper trace ---\n${read(helperTrace)}`,
-          `--- git trace ---\n${read(gitTrace)}`
-        ].join('\n')
-      )
-    }
+    if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${stderr || stdout}`)
     return stdout + stderr
   }
 
@@ -151,9 +98,7 @@ function cloneAndLog(ctx, name, ref) {
 }
 
 test.solo('push and clone round-trip', async (t) => {
-  console.log('a')
   const ctx = await setup(t)
-  console.log('b')
   ctx.git(['push', ctx.url, '--all'])
 
   const log = cloneAndLog(ctx, 'clone')
