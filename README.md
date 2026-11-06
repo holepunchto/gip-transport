@@ -172,25 +172,49 @@ When a SemVer git tag is pushed to the repo, GitHub workflows creates builds and
 
 The tarball is downloaded & extracted (`sh scripts/get-releases`) and then deployed with `pear`.
 
+Given the following example deployment links:
+
+- staging - pear://spmwyi6994m355axjob57j6ihguek4dsdujyzhxuaktm4tjjye4y
+- prerelease - pear://766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby
+- production - pear://gipxpdn4dikq6j4n1bokfu5r36n1b8d6cd5e68jj396uz7m56r3y
+
+Each must be seeded (`pear seed <link>`).
+
+Stage to staging
+
 ```
 pear stage pear://spmwyi6994m355axjob57j6ihguek4dsdujyzhxuaktm4tjjye4y
 ```
 
+Once staging is verified provision to prerelease
+
 ```
-pear provision pear://0.8.spmwyi6994m355axjob57j6ihguek4dsdujyzhxuaktm4tjjye4y pear://766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby pear://0.3.swapb14acos6iasoz5jg8bj46zt8emdk9rmm4n9j18mtjmwbqmwo
+pear provision pear://0.8.spmwyi6994m355axjob57j6ihguek4dsdujyzhxuaktm4tjjye4y pear://766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby pear://0.3.gipxpdn4dikq6j4n1bokfu5r36n1b8d6cd5e68jj396uz7m56r3y
 ```
+
+This synchonronizes from the versioned production link (pear://0.3.gip..) to the target prerelease link (pear://766j3...), then sychronizes from the staging versioned link (pear://0.8.spmw) to the target prerelease link.
+
+Versioned links take the form `pear://<fork>.<length>.<key>`. `pear info pear://<key>` has the versioned link in its output.
+
+Once prerelease is confirmed as working create a multisig request from the prerelease link, versioned:
 
 ```
 pear multisig request pear://0.10.766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby
 ```
 
+Quorum members can then sign:
+
 ```
 pear multisig sign ycyywyns9jihji9j9x4qcbqgjsssth83qudi8u1t53ugrmq1rxufwstj6eyoyyybyeyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7ntz3jspu3qfw9mtiwstpdks1g6s9fwjhfkiribfrxxzsjd8ttga59hyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7nt1p3uo8ass4x9rwxuqjtjewbrgnu1b9rm8k5pwmi1fgizsj7wbu3ay95kebz66h89e36wbr1g1167udcg9x665rgo3qxrjwm1wmwzdsu8qbgieo
 ```
 
+Once collected signatures should be verified:
+
 ```
 pear multisig verify pear://766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby ycyywyns9jihji9j9x4qcbqgjsssth83qudi8u1t53ugrmq1rxufwstj6eyoyyybyeyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7ntz3jspu3qfw9mtiwstpdks1g6s9fwjhfkiribfrxxzsjd8ttga59hyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7nt1p3uo8ass4x9rwxuqjtjewbrgnu1b9rm8k5pwmi1fgizsj7wbu3ay95kebz66h89e36wbr1g1167udcg9x665rgo3qxrjwm1wmwzdsu8qbgieo ycys1f584hzwit7z1twff4qigw9wsewby5i9g7etkoy7ccoid7goty4p3uo8ass3x7rwxuqjtjewbrgnu1b9rm8k5pwmi1fgizsj7wbu3abyzrdg38eqwum3ntnzxkc5rn77gqdt6s7ifkfnqi8qahu8jqdb7wbp6nwh5xenuqat1fbw16t8bsxkbeqfajrdgsyhxz49a3wwz3ndbq341hetbus6mcw8e56yt5fuun61nmo59jwp16nzxijmyzi93c3cxx6ctf11xxrqsj3izi48mmnxpfurut96q3hz9z3prdytbdnbx8op
 ```
+
+Once all signaturues are collected and verified, multisig commit them to proceed to production:
 
 ```
 pear multisig commit pear://766j3rsfbf1oqugswzianawqkdtbdzug98ybhk69gt79syf3yfby ycyywyns9jihji9j9x4qcbqgjsssth83qudi8u1t53ugrmq1rxufwstj6eyoyyybyeyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7ntz3jspu3qfw9mtiwstpdks1g6s9fwjhfkiribfrxxzsjd8ttga59hyy64j3ci6yjxat134ju36mq19ox165pamrrehhffr7xdbiqhc7nt1p3uo8ass4x9rwxuqjtjewbrgnu1b9rm8k5pwmi1fgizsj7wbu3ay95kebz66h89e36wbr1g1167udcg9x665rgo3qxrjwm1wmwzdsu8qbgieo ycys1f584hzwit7z1twff4qigw9wsewby5i9g7etkoy7ccoid7goty4p3uo8ass3x7rwxuqjtjewbrgnu1b9rm8k5pwmi1fgizsj7wbu3abyzrdg38eqwum3ntnzxkc5rn77gqdt6s7ifkfnqi8qahu8jqdb7wbp6nwh5xenuqat1fbw16t8bsxkbeqfajrdgsyhxz49a3wwz3ndbq341hetbus6mcw8e56yt5fuun61nmo59jwp16nzxijmyzi93c3cxx6ctf11xxrqsj3izi48mmnxpfurut96q3hz9z3prdytbdnbx8op
@@ -229,17 +253,6 @@ sudo ln -s $(pwd)/bin.js /usr/local/bin/git-remote-git+pear
 ```
 
 Git automatically looks for `git-remote-<protocol>` when accessing a remote.
-
-### Scripts
-
-- `npm start` — run the CLI under bare with updates disabled
-- `npm test` — run the brittle-bare test suite
-- `npm run lint` — lunte and prettier check
-- `npm run format` — format with prettier
-- `npm run make` — build all three binaries for the host
-- `npm run make:<bin>` — build one of the `bin` entries in package.json
-- `npm run make:<bin>:<host>` — the underlying `bare-build` invocation
-- `npm run clean` — remove `out/`
 
 ## ToDo
 
