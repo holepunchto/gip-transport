@@ -8,30 +8,30 @@ on:
 permissions:
   contents: write
 jobs:
-  # lint:
-  #   runs-on: ubuntu-latest
-  #   name: Lint
-  #   steps:
-  #     - uses: holepunchto/actions/node-base@v1
-  #     - run: npm run lint
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint
+    steps:
+      - uses: holepunchto/actions/node-base@v1
+      - run: npm run lint
 
   build:
     name: ${{ matrix.host }}
     strategy:
       matrix:
         include:
-          # - os: ubuntu-latest
-          #   host: linux-x64
-          # - os: ubuntu-24.04-arm
-          #   host: linux-arm64
-          # - os: macos-latest
-          #   host: darwin-arm64
-          # - os: macos-15-intel
-          #   host: darwin-x64
+          - os: ubuntu-latest
+            host: linux-x64
+          - os: ubuntu-24.04-arm
+            host: linux-arm64
+          - os: macos-latest
+            host: darwin-arm64
+          - os: macos-15-intel
+            host: darwin-x64
           - os: windows-latest
             host: win32-x64
-          # - os: windows-11-arm
-          #   host: win32-arm64
+          - os: windows-11-arm
+            host: win32-arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:

@@ -9,9 +9,7 @@ const { isWindows } = require('which-runtime')
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
-// Bounds one helper process so a hang reports instead of wedging the job. Must fire before
-// brittle's per-test timeout, or brittle reports first and the diagnostics are lost.
-const HELPER_TIMEOUT = 25000
+// These drive real git through a p2p transport, so they are slow on a loaded CI runner.
 const TEST_TIMEOUT = 120000
 
 async function setup(t) {
@@ -30,14 +28,7 @@ async function setup(t) {
     // it needs to accept the line. Naming the runtime rather than spelling out its path
     // also dodges git reading only the first 100 bytes of the file.
     const runtime = path.basename(process.execPath)
-    // Globals only in here: the shim sits in a tmp dir, so bare can resolve no packages
-    // from it, and `process` is not a global under bare the way `Bare` is not under node.
-    const watchdog =
-      `setTimeout(() => {\n` +
-      `  console.error('gip test shim: helper still alive after ${HELPER_TIMEOUT}ms, forcing exit')\n` +
-      `  ;(typeof Bare === 'undefined' ? process : Bare).exit(70)\n` +
-      `}, ${HELPER_TIMEOUT})\n`
-    fs.writeFileSync(shim, `#!/${runtime}\n${watchdog}require(${JSON.stringify(BIN)})\n`)
+    fs.writeFileSync(shim, `#!/${runtime}\nrequire(${JSON.stringify(BIN)})\n`)
   } else {
     fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
     fs.chmodSync(shim, 0o755)
@@ -57,25 +48,6 @@ async function setup(t) {
   // The helper otherwise checks for updates over the public DHT, which this round-trip
   // never exercises and which leaves a swarm to tear down before it can exit.
   env.GIP_NO_UPDATES = '1'
-  // Deliberately narrow: CI truncates long output, so only what shows whether the helper
-  // wrote its push reply and whether git read it. No GIT_TRACE — the spawn details are
-  // already known — and verbosity 2, so gip's own errors show without echoing every line.
-  const helperTrace = path.join(dir, 'helper-trace.log')
-  env.GIP_TRACE = helperTrace
-  env.GIP_VERBOSITY = '2'
-  env.GIT_TRANSPORT_HELPER_DEBUG = '1'
-
-  const lines = (text) => text.split(/\r?\n/).filter((line) => line.trim())
-  const tail = (list, max) => (list.length ? list.slice(-max).join('\n') : '(none)')
-
-  const readTrace = () => {
-    try {
-      // Steps and stdout writes; heartbeats only matter when something hangs.
-      return lines(fs.readFileSync(helperTrace, 'utf8')).filter((l) => !l.includes('alive, last'))
-    } catch {
-      return []
-    }
-  }
 
   const repo = path.join(dir, 'repo')
   fs.mkdirSync(repo)
@@ -100,26 +72,7 @@ async function setup(t) {
     )
     const stdout = result.output?.[1]?.toString() ?? ''
     const stderr = result.output?.[2]?.toString() ?? ''
-    if (result.status !== 0 || result.error) {
-      const all = lines(stderr).concat(lines(stdout))
-      // git's verdict: its own messages, with the protocol log and gip's chatter removed.
-      const verdict = all.filter((l) => !/^(Debug: |Gip \[)/.test(l))
-      // What git sent and what it read back. 'Waiting...' repeats and says nothing.
-      const protocol = all
-        .filter((l) => l.startsWith('Debug: Remote helper:'))
-        .filter((l) => !l.includes('Waiting'))
-        .map((l) => l.replace('Debug: Remote helper:', '').trim() || '(blank line)')
-
-      throw new Error(
-        [
-          `git ${args[0]} failed: status=${result.status}` +
-            (result.error ? ` error=${result.error.message}` : ''),
-          `--- git says (last 6) ---\n${tail(verdict, 6)}`,
-          `--- protocol, git's view (last 12) ---\n${tail(protocol, 12)}`,
-          `--- helper (last 24) ---\n${tail(readTrace(), 24)}`
-        ].join('\n')
-      )
-    }
+    if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${stderr || stdout}`)
     return stdout + stderr
   }
 
