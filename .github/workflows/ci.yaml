@@ -1,12 +1,21 @@
 name: Integrate
+
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: PR branch or commit SHA to build
+        required: true
+        type: string
+
 permissions:
   contents: write
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -38,6 +47,12 @@ jobs:
       - name: Setup repo
         uses: holepunchto/actions/.github/steps/setup-repo@v1
 
+      - name: Checkout requested ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
       - name: Install w/ dev deps
         run: npm install
 
@@ -51,7 +66,7 @@ jobs:
         run: npm run make
 
       - uses: actions/upload-artifact@v4
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         with:
           name: ${{ matrix.host }}
           path: out/${{ matrix.host }}/swap*
@@ -59,12 +74,18 @@ jobs:
   package:
     name: Package by-arch
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Setup repo
         uses: holepunchto/actions/.github/steps/setup-repo@v1
+
+      - name: Checkout requested ref
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -77,6 +98,7 @@ jobs:
           chmod +x apps/darwin-*/gip apps/linux-*/gip
           chmod +x apps/darwin-*/gip-pear apps/linux-*/gip-pear
           chmod +x apps/darwin-*/git-remote-git+pear apps/linux-*/git-remote-git+pear
+
           npx --yes pear-build \
             --darwin-arm64-app apps/darwin-arm64/gip \
             --darwin-x64-app apps/darwin-x64/gip \
@@ -97,6 +119,10 @@ jobs:
             --win32-x64-app apps/win32-x64/git-remote-git+pear.exe \
             --win32-arm64-app apps/win32-arm64/git-remote-git+pear.exe \
             --target by-arch --package ./package.json
+
           tar -czf by-arch.tar.gz by-arch
-          gh release create "$GITHUB_REF_NAME" --generate-notes || true
-          gh release upload "$GITHUB_REF_NAME" by-arch.tar.gz --clobber
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            gh release create "$GITHUB_REF_NAME" --generate-notes || true
+            gh release upload "$GITHUB_REF_NAME" by-arch.tar.gz --clobber
+          fi
