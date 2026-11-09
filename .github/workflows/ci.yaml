@@ -57,7 +57,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'pull_request' # note: debug, to remove
         with:
           name: ${{ matrix.host }}
-          path: out/${{ matrix.host }}/
+          path: out/by-arch/app/${{ matrix.host }}/
 
   package:
     name: Package by-arch
