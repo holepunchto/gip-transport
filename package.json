@@ -10,7 +10,10 @@
     "git+pear": "git.js"
   },
   "files": [
-    "lib/"
+    "lib/",
+    "index.d.ts",
+    "index.cjs",
+    "index.mjs"
   ],
   "exports": {
     "./package": "./package.json",

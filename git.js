@@ -1,15 +1,18 @@
-const process = require('bare-process')
-const { spawnSync } = require('bare-subprocess')
+#!/usr/bin/env node
+const process = require('process')
+const { spawnSync } = require('child_process')
+
+const n = Math.max(process.env.GIT_CONFIG_COUNT | 0, 0)
 
 const result = spawnSync('git', process.argv.slice(2), {
   stdio: 'inherit',
   env: {
     ...process.env,
-    GIT_CONFIG_COUNT: '2',
-    GIT_CONFIG_KEY_0: 'url.git+pear://.insteadOf',
-    GIT_CONFIG_VALUE_0: 'file://pear/',
-    GIT_CONFIG_KEY_1: 'protocol.git+pear.allow',
-    GIT_CONFIG_VALUE_1: 'always'
+    GIT_CONFIG_COUNT: `${n + 2}`,
+    [`GIT_CONFIG_KEY_${n}`]: 'url.git+pear://.insteadOf',
+    [`GIT_CONFIG_VALUE_${n}`]: 'file://pear/',
+    [`GIT_CONFIG_KEY_${n + 1}`]: 'protocol.git+pear.allow',
+    [`GIT_CONFIG_VALUE_${n + 1}`]: 'always'
   }
 })
 

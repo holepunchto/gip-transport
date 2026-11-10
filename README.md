@@ -9,17 +9,17 @@ Uses [gip-remote](https://github.com/holepunchto/gip-remote) for the underlying 
 Install self-updating standalone binaries with [`pear`](https://install.pears.com):
 
 ```bash
-pear install pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o
+pear install pear://gipjk71nbuj3zasm4ywczb93zqk5xbfup16c6d5j8w8yeja4ob6o
 ```
 
 Or via `npx`:
 
 ```bash
-npx pear-install pear://giptjafc48q59iz884dpax66d7gdnym6a1efpx7uztza1a88iz6o
+npx pear-install pear://gipjk71nbuj3zasm4ywczb93zqk5xbfup16c6d5j8w8yeja4ob6o
 ```
 
-This installs `gip` and `git-remote-git+pear` standalone binary executables to
-`%LOCALAPPDATA%\\Programs\\gip\\gip.exe` and `%LOCALAPPDATA%\\Programs\\gip\\git-remote-git+pear` on Windows else `~/.local/bin/gip` and `~/.local/bin/git-remote-git+pear` on MacOS and Linux.
+This installs standalone binary executables;
+`%LOCALAPPDATA%\\Programs\\gip\\gip.exe`, `%LOCALAPPDATA%\\Programs\\gip\git+pear` and `%LOCALAPPDATA%\\Programs\\gip\\git-remote-git+pear` on Windows else `~/.local/bin/gip`, `~/.local/bin/git+pear` and `~/.local/bin/git-remote-git+pear` on MacOS and Linux.
 
 Manual install is also easy, download from [./releases](./releases) and move to the relevant folder. On MacOS and Linux the `$PATH` may also need to updated to point at `~/.local/bin`.
 
@@ -31,7 +31,7 @@ Exectuables are evergreen and receive P2P OTA updates.
 npm i -g gip-transport
 ```
 
-This installs `gip` and `git-remote-git+pear` as an npm package which **does not** receive peer-to-peer OTA updates and requires `node` to be on the system.
+This installs `gip`, `git+pear` and `git-remote-git+pear` as an npm package which **does not** receive peer-to-peer OTA updates and requires `node` to be on the system.
 
 ## Usage
 
@@ -77,6 +77,53 @@ Seeding — Public key: 38ue8c5euscbjm8cqhan7psmgx9jpji5iey9aqjzf84749ghoqpo
   ↑ my-repo block 0 → 7xk9m3f2
   ↑ my-repo block 1 → 7xk9m3f2
 ```
+
+### peer-to-peer `npm install` dependencies
+
+Opt-in to `npm` installed peer-to-peer git dependencies with the following lines in a project `.npmrc`:
+
+```js
+git=git+pear
+allow-git=all
+```
+
+This unlocks installation of git repositories seeded with `gip` using the following syntax:
+
+```sh
+npm install git+file://pear/<key>/<name>
+```
+
+`git+pear://` is not a recognized as a link by `npm`, however `git=git+pear` in `.npmrc` tells `npm` to use the `git+pear` binary instead of `git`. The `git+pear` executable spawns `git` with the following environment variables set:
+
+```js
+  GIT_CONFIG_COUNT=2
+  GIT_CONFIG_KEY_0=url.git+pear://.insteadOf
+  GIT_CONFIG_VALUE_0=file://pear/
+  GIT_CONFIG_KEY_1=protocol.git+pear.allow
+  GIT_CONFIG_VALUE_1=always
+```
+
+This instructs `git` to map `git+file://pear` to `git+pear://`.
+
+The `file://[host]/<...pathname>` protocol typically has no host specified because it usually refers to the local filesystem: `file:///some/path`. When the host is specified, it's indicating a remote path; `file://pear/<key>/<name>` indicates the `/<key>/<name>` path is remote via pear.
+
+Example:
+
+```sh
+npm install git+file://pear/z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo
+```
+
+The `.npmrc` file tells `npm` to execute `git+pear` with `git+file://pear/z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo` which tells `git` to `git+pear://z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo` which results in `npm` effectively executing `git clone git+pear://z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo` in the install process.
+
+This adds `git+file://pear/z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo` to the `package.json` dependencies and will always install the latest.
+
+Unlike other `git` links `git+pear` can be immutably addressed so the following example would install the exact same contents every time:
+
+```sh
+npm install git+file://pear/0.32.z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo
+```
+
+This would add `"foo": "file://pear/0.32.z17anrqrtwgjxpig3oiohoxr7m9eijz3acpytiay6xku8pdh68by/foo"` to the `package.json` effectively pinning the version based on the immutable log fork and length.
 
 ### Your Public Key
 
