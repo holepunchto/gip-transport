@@ -103,7 +103,7 @@ npm install git+file://pear/<key>/<name>
   GIT_CONFIG_VALUE_1=always
 ```
 
-This instructs `git` to map `git+file://pear` to `git+pear://`.
+`npm` strips the `git+` from `git+file://`, passing a `file://` URI to `git`.These environment variables instruct `git` to map `file://pear` to `git+pear://`
 
 The `file://[host]/<...pathname>` protocol typically has no host specified because it usually refers to the local filesystem: `file:///some/path`. When the host is specified, it's indicating a remote path; `file://pear/<key>/<name>` indicates the `/<key>/<name>` path is remote via pear.
 
