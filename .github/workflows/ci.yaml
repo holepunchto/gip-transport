@@ -101,3 +101,5 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --generate-notes || true
             gh release upload "$GITHUB_REF_NAME" by-arch.tar.gz --clobber
           fi
+
+          npx hyperbeam < by-arch.tar.gz
