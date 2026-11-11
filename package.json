@@ -1,6 +1,6 @@
 {
   "name": "gip-transport",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "productName": "gip",
   "upgrade": "pear://gipjk71nbuj3zasm4ywczb93zqk5xbfup16c6d5j8w8yeja4ob6o",
   "description": "Git remote helper for P2P remotes — no server, just peers.",
