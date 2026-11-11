@@ -1,12 +1,20 @@
 {
   "name": "gip-transport",
   "version": "2.0.0",
+  "productName": "gip",
+  "upgrade": "pear://gipjk71nbuj3zasm4ywczb93zqk5xbfup16c6d5j8w8yeja4ob6o",
   "description": "Git remote helper for P2P remotes — no server, just peers.",
   "bin": {
     "git-remote-git+pear": "bin.js",
-    "git-pear": "bin-tui.js",
-    "gip": "bin-tui.js"
+    "gip": "bin-tui.js",
+    "git+pear": "git.js"
   },
+  "files": [
+    "lib/",
+    "index.d.ts",
+    "index.cjs",
+    "index.mjs"
+  ],
   "exports": {
     "./package": "./package.json",
     ".": {
@@ -16,22 +24,52 @@
     }
   },
   "scripts": {
-    "test": "brittle-bare test/all.js",
-    "format": "prettier . --write",
+    "test": "npm run test:node && npm run test:bare",
+    "test:node": "brittle-node test/all.js",
+    "test:bare": "brittle-bare test/all.js",
+    "start": "bare bin-tui.js --no-updates",
+    "format": "lunte --fix && prettier . --write",
     "lint": "lunte && prettier . --check",
-    "clean": "rm -rf out"
+    "clean": "rm -rf out",
+    "make": "node scripts/make.js",
+    "make:gip": "node scripts/make.js gip",
+    "make:git-remote-git+pear": "node scripts/make.js git-remote-git+pear",
+    "make:gip:darwin-arm64": "bare-build --name gip --standalone --host darwin-arm64 --out ./out/by-arch//app/darwin-arm64 bin-tui.js",
+    "make:gip:darwin-x64": "bare-build --name gip --standalone --host darwin-x64 --out ./out/by-arch//app/darwin-x64 bin-tui.js",
+    "make:gip:linux-arm64": "bare-build --name gip --standalone --host linux-arm64 --out ./out/by-arch//app/linux-arm64 bin-tui.js",
+    "make:gip:linux-x64": "bare-build --name gip --standalone --host linux-x64 --out ./out/by-arch//app/linux-x64 bin-tui.js",
+    "make:gip:win32-arm64": "bare-build --name gip --standalone --host win32-arm64 --out ./out/by-arch//app/win32-arm64 bin-tui.js",
+    "make:gip:win32-x64": "bare-build --name gip --standalone --host win32-x64 --out ./out/by-arch//app/win32-x64 bin-tui.js",
+    "make:git+pear:darwin-arm64": "bare-build --name git+pear --standalone --host darwin-arm64 --out ./out/by-arch/app/darwin-arm64 git.js",
+    "make:git+pear:darwin-x64": "bare-build --name git+pear --standalone --host darwin-x64 --out ./out/by-arch/app/darwin-x64 git.js",
+    "make:git+pear:linux-arm64": "bare-build --name git+pear --standalone --host linux-arm64 --out ./out/by-arch/app/linux-arm64 git.js",
+    "make:git+pear:linux-x64": "bare-build --name git+pear --standalone --host linux-x64 --out ./out/by-arch/app/linux-x64 git.js",
+    "make:git+pear:win32-arm64": "bare-build --name git+pear --standalone --host win32-arm64 --out ./out/by-arch/app/win32-arm64 git.js",
+    "make:git+pear:win32-x64": "bare-build --name git+pear --standalone --host win32-x64 --out ./out/by-arch/app/win32-x64 git.js",
+    "make:git-remote-git+pear:darwin-arm64": "bare-build --name git-remote-git+pear --standalone --host darwin-arm64 --out ./out/by-arch/app/darwin-arm64 bin.js",
+    "make:git-remote-git+pear:darwin-x64": "bare-build --name git-remote-git+pear --standalone --host darwin-x64 --out ./out/by-arch/app/darwin-x64 bin.js",
+    "make:git-remote-git+pear:linux-arm64": "bare-build --name git-remote-git+pear --standalone --host linux-arm64 --out ./out/by-arch/app/linux-arm64 bin.js",
+    "make:git-remote-git+pear:linux-x64": "bare-build --name git-remote-git+pear --standalone --host linux-x64 --out ./out/by-arch/app/linux-x64 bin.js",
+    "make:git-remote-git+pear:win32-arm64": "bare-build --name git-remote-git+pear --standalone --host win32-arm64 --out ./out/by-arch/app/win32-arm64 bin.js",
+    "make:git-remote-git+pear:win32-x64": "bare-build --name git-remote-git+pear --standalone --host win32-x64 --out ./out/by-arch/app/win32-x64 bin.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Holepunch Inc",
+  "license": "Apache-2.0",
   "devDependencies": {
-    "brittle": "^3.19.1",
+    "bare-build": "^1.0.2",
+    "brittle": "^4.1.0",
     "hyperdht": "^6.33.0",
     "localdrive": "^2.2.1",
+    "lunte": "^1.2.0",
     "prettier-config-holepunch": "^2.0.0",
     "test-tmp": "^1.4.0"
   },
   "imports": {
+    "#spinner": {
+      "bare": "bare-spinner",
+      "default": "./lib/node-spinner.js"
+    },
     "buffer": {
       "bare": "bare-buffer",
       "default": "buffer"
@@ -101,11 +139,13 @@
     "keet-identity-key": "^3.2.0",
     "mirror-drive": "^1.14.2",
     "paparam": "^1.10.1",
+    "pear-runtime": "^1.1.4",
     "protomux-wakeup": "^2.9.0",
     "ready-resource": "^1.2.0",
     "rebuild-git": "^1.1.1",
     "sodium-native": "^5.1.0",
     "streamx": "^2.28.0",
+    "which-runtime": "^1.4.0",
     "z32": "^1.1.0"
   },
   "repository": {
