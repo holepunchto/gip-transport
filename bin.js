@@ -127,7 +127,9 @@ const main = async () => {
           } else {
             gip._debug('pushing')
             await gip.push()
-            gip._progressReporter.reportInfo(`Latest: ${gip.remote.url}`)
+            gip._progressReporter.reportInfo(
+              `${gip.remote.pinned ? 'Pinned' : 'Latest'}: ${gip.remote.url}`
+            )
           }
           return
         }
