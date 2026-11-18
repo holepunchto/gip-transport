@@ -8,8 +8,15 @@ async function runTests() {
   test.pause()
 
   await import('./bootstrap.js')
+  await import('./chaos.js')
+  await import('./conformance/clone.js')
+  await import('./conformance/content.js')
+  await import('./conformance/fetch.js')
+  await import('./conformance/protocol.js')
+  await import('./conformance/push.js')
   await import('./local.js')
   await import('./push.js')
+  await import('./differential.js')
 
   test.resume()
 }
