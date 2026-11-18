@@ -62,6 +62,7 @@ jobs:
   git:
     name: git suite ${{ matrix.host }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
