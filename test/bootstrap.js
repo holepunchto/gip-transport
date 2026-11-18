@@ -45,7 +45,7 @@ test('helper with GIP_BOOTSTRAP clones from a peer on a testnet', async (t) => {
       let stderr = ''
       child.stdout.on('data', () => {})
       child.stderr.on('data', (data) => (stderr += data))
-      child.on('exit', (code) => {
+      child.on('close', (code) => {
         if (code === 0) resolve()
         else reject(new Error(`git ${args[0]} failed: ${stderr}`))
       })

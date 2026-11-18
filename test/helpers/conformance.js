@@ -314,7 +314,7 @@ function exec(cmd, args, opts = {}) {
     child.stdout.on('data', (data) => stdout.push(data))
     child.stderr.on('data', (data) => stderr.push(data))
     child.on('error', reject)
-    child.on('exit', (status, signal) => {
+    child.on('close', (status, signal) => {
       clearTimeout(timer)
       resolve({
         status: status ?? signal,

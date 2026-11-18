@@ -97,7 +97,7 @@ async function create(t) {
         pending = null
       })
 
-      child.on('exit', (code, signal) => {
+      child.on('close', (code, signal) => {
         clearTimeout(hangTimer)
         clearTimeout(killTimer)
         if (hung) killed = false
