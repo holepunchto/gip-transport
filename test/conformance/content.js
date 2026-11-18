@@ -29,20 +29,15 @@ content('unicode branch and tag names', async (w) => {
   await w.ok(['tag', 'v✓'])
 })
 
-const TAGS = {
-  todo: 'tags are filed as the branch tags/<name>, so this branch becomes the tag foo (lib/gip.js)'
-}
-
-// Tags are filed as branch `tags/<name>` in the store: a branch really called
-// tags/foo must not become the tag foo, or shadow it.
-content('a branch named tags/foo next to a tag foo', TAGS, async (w) => {
+// A branch really called tags/foo must not become the tag foo, or shadow it.
+content('a branch named tags/foo next to a tag foo', async (w) => {
   await w.commit('one')
   await w.ok(['tag', 'foo'])
   await w.commit('two')
   await w.ok(['branch', 'tags/foo'])
 })
 
-content('a branch named tags/foo and no such tag', TAGS, async (w) => {
+content('a branch named tags/foo and no such tag', async (w) => {
   await w.commit('one')
   await w.ok(['branch', 'tags/foo'])
 })

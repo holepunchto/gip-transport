@@ -3,29 +3,15 @@ const conform = require('../helpers/conformance')
 // Scenarios from git's t5510-fetch, t5503 (tag following), t5516-fetch-push
 // and t5537 (shallow), run against file:// and git+pear://. Every scenario
 // starts from a clone of the seeded remote, moves the remote, then fetches.
-//
-// Allowlisted: a fetch also writes each fetched ref under its remote name
-// (the remote's main lands on the local refs/heads/main). That is one bug with
-// one test, "fetch leaves local branches alone" — left in the comparison it
-// would fail every scenario here. So local branches named like a remote branch
-// stay out, and scenarios that fetch into a local branch use another name.
-
-const CLOBBERED = /^refs\/heads\/(main|side|topic) /
-
-const GIT_DIR =
-  'objects are written to dirname(GIT_DIR)/.git, which only is the repository when GIT_DIR ' +
-  'ends in /.git (gip-remote lib/git.js toDisk)'
 
 function fetching(name, opts, fn) {
   if (typeof opts === 'function') return fetching(name, {}, opts)
-
-  const { except = CLOBBERED } = opts
 
   conform(`fetch ${name}`, { snapshot: false, ...opts }, async (w) => {
     await w.seed()
     const local = await w.clone('local', opts.clone)
     await fn(w, local)
-    await w.inspect(local, { except })
+    await w.inspect(local)
   })
 }
 
@@ -39,19 +25,12 @@ fetching('with the default refspec', async (w, local) => {
 
 // t5510 "fetch must not resolve short remote name" / local branches are the
 // user's: a fetch only moves remote-tracking refs.
-fetching(
-  'leaves local branches alone',
-  {
-    except: null,
-    todo: 'every fetched ref is also written under its remote name, over local branches (lib/gip.js fetch)'
-  },
-  async (w, local) => {
-    await w.commit('three')
-    await w.run(['push', w.url, 'main'])
-    await w.commit('mine', { cwd: local })
-    await w.run(['fetch'], { cwd: local })
-  }
-)
+fetching('leaves local branches alone', async (w, local) => {
+  await w.commit('three')
+  await w.run(['push', w.url, 'main'])
+  await w.commit('mine', { cwd: local })
+  await w.run(['fetch'], { cwd: local })
+})
 
 fetching('with explicit refspecs', async (w, local) => {
   await w.commit('three')
@@ -91,18 +70,12 @@ fetching('--no-tags', async (w, local) => {
 
 // t5503 "auto-follow tag": an annotated tag on a fetched commit is not part
 // of the first batch — git asks for it in a second one.
-fetching(
-  'follows an annotated tag on new history',
-  {
-    todo: 'option followtags is answered ok and ignored (bin.js), and the list has no peeled refs to follow'
-  },
-  async (w, local) => {
-    await w.commit('three')
-    await w.ok(['tag', '-a', 'v2', '-m', 'v2'])
-    await w.run(['push', w.url, 'main', 'v2'])
-    await w.run(['fetch'], { cwd: local })
-  }
-)
+fetching('follows an annotated tag on new history', async (w, local) => {
+  await w.commit('three')
+  await w.ok(['tag', '-a', 'v2', '-m', 'v2'])
+  await w.run(['push', w.url, 'main', 'v2'])
+  await w.run(['fetch'], { cwd: local })
+})
 
 fetching('follows a lightweight tag on new history', async (w, local) => {
   await w.commit('three')
@@ -145,18 +118,12 @@ fetching('a ref deleted on the remote', async (w, local) => {
 })
 
 // t5516 "fetch exact SHA1": the tip of an advertised ref, by oid.
-fetching(
-  'by raw oid',
-  {
-    todo: 'only `<oid> <name>` pairs from the list are fetched, the request is dropped (lib/gip.js prepareFetch)'
-  },
-  async (w, local) => {
-    const oid = await w.commit('three')
-    await w.run(['push', w.url, 'main'])
-    await w.run(['fetch', 'origin', oid], { cwd: local })
-    w.note('fetched', (await w.git(['cat-file', '-t', oid], { cwd: local })).stdout)
-  }
-)
+fetching('by raw oid', async (w, local) => {
+  const oid = await w.commit('three')
+  await w.run(['push', w.url, 'main'])
+  await w.run(['fetch', 'origin', oid], { cwd: local })
+  w.note('fetched', (await w.git(['cat-file', '-t', oid], { cwd: local })).stdout)
+})
 
 // t5510 "fetch --all"
 conform('fetch --all with two remotes', { snapshot: false }, async (w) => {
@@ -169,7 +136,7 @@ conform('fetch --all with two remotes', { snapshot: false }, async (w) => {
   await w.commit('three')
   await w.run(['push', w.url, 'main'])
   await w.run(['fetch', '--all'], { cwd: local })
-  await w.inspect(local, { except: CLOBBERED })
+  await w.inspect(local)
 })
 
 // t5510 "pull": fetch + merge through the same path.
@@ -180,7 +147,7 @@ fetching('via pull --ff-only', async (w, local) => {
 })
 
 // t2400-series: a linked worktree has its own GIT_DIR under .git/worktrees
-conform('fetch from a linked worktree', { snapshot: false, todo: GIT_DIR }, async (w) => {
+conform('fetch from a linked worktree', { snapshot: false }, async (w) => {
   await w.seed()
   const local = await w.clone()
   const linked = `${w.dir}/linked`
@@ -188,11 +155,11 @@ conform('fetch from a linked worktree', { snapshot: false, todo: GIT_DIR }, asyn
   await w.commit('three')
   await w.run(['push', w.url, 'main'])
   await w.run(['fetch'], { cwd: linked })
-  await w.inspect(local, { except: CLOBBERED })
+  await w.inspect(local)
 })
 
 // t5510 fetch into a bare repository
-conform('fetch into a bare repository', { snapshot: false, todo: GIT_DIR }, async (w) => {
+conform('fetch into a bare repository', { snapshot: false }, async (w) => {
   await w.seed()
   const bare = `${w.dir}/bare.git`
   await w.ok(['init', '-q', '--bare', bare])
@@ -202,31 +169,16 @@ conform('fetch into a bare repository', { snapshot: false, todo: GIT_DIR }, asyn
 
 // Shallow fetches are not supported: they have to say so.
 // t5537 / t5500 "fetch --depth", "--deepen", "--unshallow"
-fetching(
-  '--depth 1',
-  {
-    check: conform.loud,
-    todo: 'a full fetch, silently: option depth is answered ok and ignored (bin.js)'
-  },
-  async (w, local) => {
-    await w.commit('three')
-    await w.commit('four')
-    await w.run(['push', w.url, 'main'])
-    await w.run(['fetch', '--depth', '1'], { cwd: local })
-  }
-)
+fetching('--depth 1', { check: conform.loud }, async (w, local) => {
+  await w.commit('three')
+  await w.commit('four')
+  await w.run(['push', w.url, 'main'])
+  await w.run(['fetch', '--depth', '1'], { cwd: local })
+})
 
-fetching(
-  '--deepen',
-  {
-    check: conform.loud,
-    clone: ['--depth', '1'],
-    todo: 'nothing is shallow to begin with: option depth is answered ok and ignored (bin.js)'
-  },
-  async (w, local) => {
-    await w.run(['fetch', '--deepen', '1'], { cwd: local })
-  }
-)
+fetching('--deepen', { check: conform.loud, clone: ['--depth', '1'] }, async (w, local) => {
+  await w.run(['fetch', '--deepen', '1'], { cwd: local })
+})
 
 fetching('--unshallow', { check: conform.loud, clone: ['--depth', '1'] }, async (w, local) => {
   await w.run(['fetch', '--unshallow'], { cwd: local })

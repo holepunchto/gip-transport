@@ -4,29 +4,22 @@ const conform = require('../helpers/conformance')
 // Scenarios from git's t5601-clone, t5500/t5537 (shallow) and t5616 (partial
 // clone), run against file:// and git+pear://.
 
-const GIT_DIR =
-  'objects are written to dirname(GIT_DIR)/.git, which only is the repository when GIT_DIR ' +
-  'ends in /.git (gip-remote lib/git.js toDisk)'
-const PEELED =
-  'the annotated tag on the branch is not followed: option followtags is answered ok and ' +
-  'ignored (bin.js), and the list has no peeled refs'
-
 const flags = {
   plain: {},
-  '--bare': { args: ['--bare'], todo: GIT_DIR },
-  '--mirror': { args: ['--mirror'], todo: GIT_DIR },
-  '--separate-git-dir': { args: ['--separate-git-dir', 'elsewhere'], todo: GIT_DIR },
+  '--bare': { args: ['--bare'] },
+  '--mirror': { args: ['--mirror'] },
+  '--separate-git-dir': { args: ['--separate-git-dir', 'elsewhere'] },
   '--branch <branch>': { args: ['--branch', 'side'] },
   '--branch <tag>': { args: ['--branch', 'v1'] },
-  '--single-branch': { args: ['--single-branch'], todo: PEELED },
+  '--single-branch': { args: ['--single-branch'] },
   '--single-branch --branch <branch>': { args: ['--single-branch', '--branch', 'side'] },
   '--no-tags': { args: ['--no-tags'] },
   '--origin': { args: ['--origin', 'upstream'] },
   '--no-checkout': { args: ['--no-checkout'] }
 }
 
-for (const [name, { args, todo }] of Object.entries(flags)) {
-  conform(`clone ${name}`, { snapshot: false, todo }, async (w) => {
+for (const [name, { args }] of Object.entries(flags)) {
+  conform(`clone ${name}`, { snapshot: false }, async (w) => {
     await w.seed()
     await w.inspect(await w.clone('local', args))
   })
@@ -43,9 +36,7 @@ const unsupported = {
 }
 
 for (const [name, args] of Object.entries(unsupported)) {
-  const todo = `a full clone, silently: the option for ${name} is answered ok and ignored (bin.js)`
-
-  conform(`clone ${name}`, { snapshot: false, check: conform.loud, todo }, async (w) => {
+  conform(`clone ${name}`, { snapshot: false, check: conform.loud }, async (w) => {
     if (!w.pear) await w.ok(['config', 'uploadpack.allowFilter', 'true'], { cwd: remote(w) })
     await w.seed()
     await w.commit('three', { env: { GIT_COMMITTER_DATE: '1700000100 +0000' } })
@@ -57,15 +48,9 @@ for (const [name, args] of Object.entries(unsupported)) {
 }
 
 // t5601 "clone empty repository"
-conform(
-  'clone an empty remote',
-  {
-    todo: 'list throws "Repo not found, peers required" for a repo with no refs (lib/gip.js list)'
-  },
-  async (w) => {
-    await w.inspect(await w.clone())
-  }
-)
+conform('clone an empty remote', async (w) => {
+  await w.inspect(await w.clone())
+})
 
 // t5601 "clone from a repository with two identical branches": HEAD is
 // ambiguous by oid, the symref has to carry it.

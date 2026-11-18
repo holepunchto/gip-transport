@@ -69,16 +69,18 @@ const main = async () => {
     pear.ready().catch(() => {})
   }
 
-  gip.setProgress(true)
-  gip.ready()
+  // Opening starts while git is still sending options; the first command to need it awaits it.
+  gip.ready().catch(() => {})
 
+  // bare-readline does not end with its input, and git hanging up is all a helper is told.
   const rl = readline.createInterface({ input: process.stdin })
+  process.stdin.on('end', () => rl.close())
+  let code = 0
 
   try {
-    for await (const line of rl) {
-      if (!gip.opened) await gip.ready()
-
-      const command = line.split(' ')[0]
+    // Git ends a session by closing stdin, or with a blank line when no batch is open.
+    session: for await (const line of rl) {
+      const [command, ...args] = line.split(' ')
       gip._verbose('Line: ' + line)
 
       switch (command) {
@@ -86,63 +88,44 @@ const main = async () => {
           capabilities()
           break
         case 'option':
-          {
-            const option = line.split(' ')[1]
-            switch (option) {
-              case 'verbosity':
-                gip.setVerbosity(line.split(' ')[2])
-                break
-              case 'progress':
-                gip.setProgress(line.split(' ')[2] === 'true')
-                break
-              case 'cloning':
-                gip.setCloning(line.split(' ')[2] === 'true')
-                break
-              case 'followtags':
-                gip.setFollowTags(line.split(' ')[2] === 'true')
-                break
-            }
-            stdout.write('ok\n')
-          }
+          stdout.write(gip.setOption(args[0], args.slice(1).join(' ')) + '\n')
           break
-        case 'list': {
-          if (line === 'list') {
-            await gip.listAndStoreRefs()
-          } else {
-            await gip.listForPush()
-          }
+        case 'list':
+          await gip.connect()
+          await gip.list(args[0] === 'for-push')
           break
-        }
-        case 'push': {
-          const ref = line.split(' ')[1]
-          await gip.addPushRefs(ref)
+        case 'push':
+          gip.addPush(args[0])
           break
-        }
-        case 'fetch': {
-          gip.prepareFetch(line.replace('fetch ', ''))
+        case 'fetch':
+          gip.addFetch(args[0], args[1])
           break
-        }
-        case '': {
+        case '':
           if (gip.hasPendingFetch()) {
+            await gip.connect()
             await gip.fetch()
-          } else {
+          } else if (gip.hasPendingPush()) {
+            await gip.connect()
             gip._debug('pushing')
             await gip.push()
-            gip._progressReporter.reportInfo(`Latest: ${gip.remote.url}`)
+          } else {
+            break session
           }
-          return
-        }
+          break
         default:
           console.error('Unexpected message:', line)
       }
     }
   } catch (e) {
     console.error(e.message)
+    code = 1
   } finally {
     gip._debug('Closing gip')
-    await gip.close()
+    // close() would wait for an open still in flight, and that can be a download git no
+    // longer wants. Exiting is what releases the store then.
+    if (gip.opened) await gip.close()
     if (pear !== null) await pear.close()
-    process.exit(0)
+    process.exit(code)
   }
 }
 

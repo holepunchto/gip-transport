@@ -18,13 +18,10 @@ const TIMEOUT = 60000
 // remote (the oracle) and against git+pear:// (a local store), and every
 // observation the two record must match. Dates are pinned so both sides
 // build identical oids.
-//
 // Scenarios start when they are registered and run CONCURRENCY at a time; the
 // brittle test only awaits and compares. Every helper bootstraps from one
 // local testnet, which goes when the last scenario has been compared.
 //
-// { todo: 'the bug' } registers a brittle todo. GIP_TODO=1 runs those for
-// real, to reproduce the bug.
 
 module.exports = conform
 conform.loud = loud
@@ -34,7 +31,6 @@ let registered = 0
 
 function conform(name, opts, fn) {
   if (typeof opts === 'function') return conform(name, {}, opts)
-  if (opts.todo && !process.env.GIP_TODO) return test.todo(`${name} (bug: ${opts.todo})`)
 
   // { only: 'pear' } is for what has no file:// equivalent, such as speaking
   // the helper protocol directly: there is no oracle, check(t, pear) decides.
@@ -246,12 +242,8 @@ async function world(kind, opts = {}) {
 
     // The remote as everyone else sees it: its refs, and a fresh clone.
     async snapshot() {
-      // Allowlisted: peeled tags (`refs/tags/v1^{}`) are not advertised.
-      // protocol.js holds the one test for that; here it would only make
-      // every scenario with an annotated tag fail for the same reason.
       const ls = await git(['ls-remote', '--symref', w.url], { cwd: dir })
-      const refs = lines(ls.stdout).filter((line) => !line.endsWith('^{}'))
-      w.note('ls-remote', { status: ls.status, refs })
+      w.note('ls-remote', { status: ls.status, refs: lines(ls.stdout) })
 
       const dest = path.join(dir, 'snapshot')
       const clone = await git(['clone', '-q', w.url, dest], { cwd: dir })

@@ -58,6 +58,16 @@ git clone git+pear://<key>/my-repo
 git push origin --delete my-branch
 ```
 
+`--force`, `--force-with-lease`, `--atomic`, `--dry-run`, `--tags`, `--follow-tags`, `--mirror` and `--prune` behave as they do against any other remote. Where a remote differs:
+
+- Only branches and tags are stored. A push to any other namespace (`refs/notes/*`, `refs/pull/*`) is refused with `unsupported ref namespace`.
+- The branch `HEAD` points at cannot be deleted.
+- `HEAD` follows the pusher: after a push it names the branch you have checked out, if the remote has it. With a detached or unborn `HEAD` it stays where it was, and on a new remote it is `main`, else `master`, else the first branch pushed.
+- Shallow and partial clones (`--depth`, `--shallow-since`, `--filter`) are refused, and so is a push that would leave the remote with a shallow history.
+- Push options (`-o`) and signed pushes (`--signed`) are refused.
+- `git push` and `git fetch` do not seed. They leave the swarm when they are done, so run `gip seed`, or configure a blind peer, to keep a repository reachable.
+- `--atomic` checks every ref before it writes any, but each ref is its own write: a ref that loses a race with another pusher is reported on its own.
+
 ### Seeding
 
 Keep your repositories available to peers:

@@ -24,6 +24,20 @@ conform('push rejects a non-fast-forward', async (w) => {
   await w.run(['push', w.url, 'main'])
 })
 
+// t5516 "push with non-ff", from the other side: the remote moved to a commit this repo has
+// never seen, so git cannot tell and the remote has to refuse.
+conform('push rejects when the remote has commits it never fetched', async (w) => {
+  await w.commit('one')
+  await w.run(['push', w.url, 'main'])
+
+  const other = await w.clone('other')
+  await w.commit('theirs', { cwd: other })
+  await w.run(['push', 'origin', 'main'], { cwd: other })
+
+  await w.commit('mine')
+  await w.run(['push', w.url, 'main'])
+})
+
 // t5516 "push with +HEAD"
 conform('push +refspec forces a non-fast-forward', async (w) => {
   await diverge(w)
@@ -59,17 +73,13 @@ conform('push --atomic lands nothing when one ref is rejected', async (w) => {
 })
 
 // t5516 "push --dry-run"
-conform(
-  'push --dry-run writes nothing',
-  { todo: 'option dry-run is answered ok and ignored, the push is written (bin.js)' },
-  async (w) => {
-    await w.commit('one')
-    await w.run(['push', w.url, 'main'])
-    await w.commit('two')
-    await w.ok(['branch', 'topic'])
-    await w.run(['push', '--dry-run', w.url, 'main', 'topic'])
-  }
-)
+conform('push --dry-run writes nothing', async (w) => {
+  await w.commit('one')
+  await w.run(['push', w.url, 'main'])
+  await w.commit('two')
+  await w.ok(['branch', 'topic'])
+  await w.run(['push', '--dry-run', w.url, 'main', 'topic'])
+})
 
 // t5516 "allow deleting a ref using --delete"
 conform('push --delete a branch', async (w) => {
@@ -90,14 +100,10 @@ conform('push --delete a ref the remote does not have', async (w) => {
 })
 
 // t5516 "deny deleting the current branch" (receive.denyDeleteCurrent)
-conform(
-  'push --delete refuses the branch HEAD points at',
-  { todo: 'the branch is deleted and the remote is left without a HEAD (lib/gip.js)' },
-  async (w) => {
-    await w.seed()
-    await w.run(['push', w.url, '--delete', 'main'])
-  }
-)
+conform('push --delete refuses the branch HEAD points at', async (w) => {
+  await w.seed()
+  await w.run(['push', w.url, '--delete', 'main'])
+})
 
 conform('push deletes and updates in one go', async (w) => {
   await w.seed()
@@ -134,17 +140,13 @@ conform('push --all', async (w) => {
 })
 
 // t5516 "push --mirror": removes what is gone locally as well
-conform(
-  'push --mirror',
-  { todo: 'list for-push advertises HEAD, so --mirror tries to delete it (lib/gip.js)' },
-  async (w) => {
-    await w.seed()
-    await w.ok(['branch', '-D', 'side'])
-    await w.ok(['tag', '-d', 'light'])
-    await w.ok(['branch', 'topic'])
-    await w.run(['push', '--mirror', w.url])
-  }
-)
+conform('push --mirror', async (w) => {
+  await w.seed()
+  await w.ok(['branch', '-D', 'side'])
+  await w.ok(['tag', '-d', 'light'])
+  await w.ok(['branch', 'topic'])
+  await w.run(['push', '--mirror', w.url])
+})
 
 // t5516 "push --prune"
 conform('push --prune', async (w) => {
@@ -220,47 +222,36 @@ conform('push an unrelated history', async (w) => {
   await w.run(['push', '--force', w.url, 'orphan:main'])
 })
 
-// t5516 "push into refs/notes", "refs/pull", any namespace: a remote keeps a
-// ref where it was pushed.
+// t5516 "push into refs/notes", "refs/pull", any namespace: the store only has
+// branches and tags, so anything else is refused, never filed as a branch.
 for (const ref of [
   'refs/notes/commits',
   'refs/pull/1/head',
   'refs/remotes/origin/main',
   'refs/meta/config'
 ]) {
-  const todo = `stored as the branch refs/heads/${ref} (lib/gip.js)`
-
-  conform(`push to ${ref}`, { todo }, async (w) => {
+  conform(`push to ${ref}`, { check: refused }, async (w) => {
     await w.commit('one')
     await w.run(['push', w.url, 'main'])
     await w.commit('two')
-    await w.run(['push', w.url, `main:${ref}`])
+    const push = await w.run(['push', w.url, `main:${ref}`])
+    w.note('why', push.stderr.includes('unsupported ref namespace'))
   })
 }
 
 // t7004 / t5516 tags of every shape
-const NOT_A_COMMIT =
-  'the store only takes tags of commits (gip-remote index.js), and the error line is ' +
-  'malformed so git exits 0 (lib/gip.js)'
-
 const tags = {
   'a lightweight tag': { tag: ['tag', 'it'] },
   'an annotated tag': { tag: ['tag', '-a', 'it', '-m', 'it'] },
   'a tag of a tag': { tag: ['tag', '-a', 'it', '-m', 'outer', 'inner'] },
-  'a lightweight tag of a tree': { tag: ['tag', 'it', 'HEAD^{tree}'], todo: NOT_A_COMMIT },
-  'a lightweight tag of a blob': { tag: ['tag', 'it', 'HEAD:one.txt'], todo: NOT_A_COMMIT },
-  'an annotated tag of a tree': {
-    tag: ['tag', '-a', 'it', '-m', 'it', 'HEAD^{tree}'],
-    todo: NOT_A_COMMIT
-  },
-  'an annotated tag of a blob': {
-    tag: ['tag', '-a', 'it', '-m', 'it', 'HEAD:one.txt'],
-    todo: NOT_A_COMMIT
-  }
+  'a lightweight tag of a tree': { tag: ['tag', 'it', 'HEAD^{tree}'] },
+  'a lightweight tag of a blob': { tag: ['tag', 'it', 'HEAD:one.txt'] },
+  'an annotated tag of a tree': { tag: ['tag', '-a', 'it', '-m', 'it', 'HEAD^{tree}'] },
+  'an annotated tag of a blob': { tag: ['tag', '-a', 'it', '-m', 'it', 'HEAD:one.txt'] }
 }
 
-for (const [name, { tag, todo }] of Object.entries(tags)) {
-  conform(`push ${name}`, { todo }, async (w) => {
+for (const [name, { tag }] of Object.entries(tags)) {
+  conform(`push ${name}`, async (w) => {
     await w.commit('one')
     await w.ok(['tag', '-a', 'inner', '-m', 'inner'])
     await w.ok(tag)
@@ -279,32 +270,49 @@ conform('push refuses to move a tag without --force', async (w) => {
   await w.run(['push', '--force', w.url, 'it'])
 })
 
+// t5537 "push from shallow clone": a history cut short cannot be stored whole.
+conform('push from a shallow clone is refused', async (w) => {
+  const full = `${w.dir}/full`
+  await w.ok(['init', '-q', full])
+  await w.commit('one', { cwd: full })
+  await w.commit('two', { cwd: full })
+
+  const shallow = `${w.dir}/shallow`
+  await w.ok(['clone', '-q', '--depth', '1', `file://${full}`, shallow])
+  await w.run(['push', w.url, 'main'], { cwd: shallow })
+})
+
 // t5545 "push option denied by remote": we do not take push options, and
 // git has to hear that instead of dropping them.
-conform(
-  'push -o is refused by a remote without push options',
-  { todo: 'option push-option is answered ok and ignored (bin.js)' },
-  async (w) => {
-    await w.commit('one')
-    await w.run(['push', '-o', 'ci.skip', w.url, 'main'])
-  }
-)
+conform('push -o is refused by a remote without push options', async (w) => {
+  await w.commit('one')
+  await w.run(['push', '-o', 'ci.skip', w.url, 'main'])
+})
 
 // t5534 "signed push sends push certificate": same for a push certificate
 // nobody will check.
-conform(
-  'push --signed is refused by a remote that cannot verify it',
-  { todo: 'option pushcert is answered ok and ignored, the push lands unsigned (bin.js)' },
-  async (w) => {
-    await w.commit('one')
-    await w.run(['push', '--signed', w.url, 'main'])
-  }
-)
+conform('push --signed is refused by a remote that cannot verify it', async (w) => {
+  await w.commit('one')
+  await w.run(['push', '--signed', w.url, 'main'])
+})
 
 conform('push --signed=if-asked', async (w) => {
   await w.commit('one')
   await w.run(['push', '--signed=if-asked', w.url, 'main'])
 })
+
+// Where file:// stores the ref, the push has to fail, say why, and leave the
+// remote as it was.
+function refused(t, pear) {
+  const seen = Object.fromEntries(pear)
+  const main = seen['ls-remote'].refs.filter((line) => line.endsWith('refs/heads/main'))
+
+  t.is(pear[1][1], 1, pear[1][0])
+  t.ok(seen.why, 'unsupported ref namespace')
+  t.is(seen['ls-remote'].refs.length, 3, 'HEAD, its symref and main')
+  t.is(main.length, 1)
+  t.is(seen['fresh clone fsck'], 0)
+}
 
 // main is two commits on the remote, and a different second commit locally.
 async function diverge(w) {

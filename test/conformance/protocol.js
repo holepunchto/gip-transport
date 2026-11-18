@@ -23,17 +23,30 @@ helper(
   }
 )
 
+const implemented = [
+  'verbosity 1',
+  'progress false',
+  'followtags true',
+  'dry-run true',
+  'atomic true',
+  'cas refs/heads/main:0000000000000000000000000000000000000000',
+  'pushcert if-asked'
+]
+
 helper(
   'answers ok to the options it implements',
   {
     check(t, [[, session]]) {
-      t.alike(session.stdout.split('\n').slice(0, 3), ['ok', 'ok', 'ok'])
+      t.alike(
+        session.stdout.split('\n').slice(0, implemented.length),
+        implemented.map(() => 'ok')
+      )
     }
   },
   async (w) => {
     w.note(
       'session',
-      await w.helper('option verbosity 1\noption progress false\noption cloning true\n\n')
+      await w.helper(implemented.map((option) => `option ${option}\n`).join('') + '\n')
     )
   }
 )
@@ -42,7 +55,6 @@ helper(
 helper(
   'exits when stdin closes',
   {
-    todo: 'the read loop never ends on EOF, the helper stays behind holding the store (bin.js)',
     check(t, [[, session]]) {
       t.is(session.status, 0)
     }
@@ -53,14 +65,12 @@ helper(
 )
 
 // gitremote-helpers(7): "unsupported" is how a helper tells git it cannot
-// honour an option. Answering ok makes git believe a dry run will not write,
-// a lease is checked, a clone is shallow.
+// honour an option. Answering ok makes git believe a clone is shallow, a push
+// is signed, the objects it was handed are already checked.
 const options = [
   'frobnicate true',
-  'followtags true',
-  'dry-run true',
-  'atomic true',
-  'cas refs/heads/main:0000000000000000000000000000000000000000',
+  'cloning true',
+  'check-connectivity true',
   'depth 1',
   'deepen-since 1700000000',
   'deepen-not refs/tags/v1',
@@ -73,10 +83,9 @@ const options = [
 helper(
   'answers unsupported to the options it does not implement',
   {
-    todo: 'every option is answered ok (bin.js)',
     check(t, [[, session]]) {
       const answers = session.stdout.split('\n')
-      options.forEach((option, i) => t.not(answers[i], 'ok', `option ${option}`))
+      options.forEach((option, i) => t.is(answers[i], 'unsupported', `option ${option}`))
     }
   },
   async (w) => {
@@ -89,7 +98,6 @@ helper(
 helper(
   'serves a second fetch batch in the same session',
   {
-    todo: 'the helper returns after the first batch (bin.js)',
     check(t, pear) {
       const seen = Object.fromEntries(pear)
       t.is(seen.session.status, 0)
@@ -122,10 +130,9 @@ helper(
 helper(
   'refuses a non-fast-forward push that was not forced',
   {
-    todo: 'the store overwrites refs unconditionally, only git checks, against a list that can be stale (lib/gip.js push)',
     check(t, pear) {
       const seen = Object.fromEntries(pear)
-      t.ok(seen.session.stdout.startsWith('error refs/heads/main'), seen.session.stdout)
+      t.is(seen.session.stdout, 'error refs/heads/main non-fast-forward\n\n')
       t.is(seen.after, seen.before, 'the ref did not move')
     }
   },
@@ -142,10 +149,69 @@ helper(
   }
 )
 
+// t5533: git checks a lease against the list it was given. The remote may have moved since,
+// so the oid in `option cas` is what the write itself has to find.
+helper(
+  'refuses a forced push whose lease is stale',
+  {
+    check(t, pear) {
+      const seen = Object.fromEntries(pear)
+      t.is(seen.session.stdout, 'ok\nerror refs/heads/main stale info\n\n')
+      t.is(seen.after, seen.before, 'the ref did not move')
+    }
+  },
+  async (w) => {
+    const one = await w.commit('one')
+    await w.commit('two')
+    await w.run(['push', w.url, 'main'])
+    w.note('before', (await w.git(['ls-remote', w.url, 'refs/heads/main'])).stdout)
+
+    await w.ok(['reset', '-q', '--hard', one])
+    await w.commit('other')
+    w.note(
+      'session',
+      await w.helper(`option cas refs/heads/main:${one}\npush +refs/heads/main:refs/heads/main\n\n`)
+    )
+    w.note('after', (await w.git(['ls-remote', w.url, 'refs/heads/main'])).stdout)
+  }
+)
+
+// t5543: git only sends an atomic push it found no fault with, so a ref the helper refuses
+// has to take the others down itself.
+helper(
+  'lands no ref of an atomic push when it refuses one',
+  {
+    check(t, pear) {
+      const seen = Object.fromEntries(pear)
+      t.is(
+        seen.session.stdout,
+        'ok\nerror refs/heads/topic atomic push failed\nerror refs/heads/main non-fast-forward\n\n'
+      )
+      t.is(seen.after, seen.before, 'no ref moved')
+    }
+  },
+  async (w) => {
+    await w.commit('one')
+    await w.commit('two')
+    await w.run(['push', w.url, 'main'])
+    w.note('before', (await w.git(['ls-remote', w.url])).stdout)
+
+    await w.ok(['reset', '-q', '--hard', 'HEAD~1'])
+    await w.commit('other')
+    await w.ok(['branch', 'topic'])
+    w.note(
+      'session',
+      await w.helper(
+        'option atomic true\npush refs/heads/topic:refs/heads/topic\npush refs/heads/main:refs/heads/main\n\n'
+      )
+    )
+    w.note('after', (await w.git(['ls-remote', w.url])).stdout)
+  }
+)
+
 helper(
   'exits non-zero when it cannot open its store',
   {
-    todo: 'errors are printed and the helper exits 0 (bin.js)',
     check(t, [[, session]]) {
       t.not(session.status, 0)
     }
@@ -163,15 +229,11 @@ conform('git fails when the helper fails', { snapshot: false }, async (w) => {
 
 // `git ls-remote` prints what the helper lists: an annotated tag comes with
 // its peeled `^{}` line, which is also what tag following keys on.
-conform(
-  'ls-remote lists peeled tags',
-  { snapshot: false, todo: 'the list has no `<oid> refs/tags/<name>^{}` lines (lib/gip.js list)' },
-  async (w) => {
-    await w.seed()
-    const ls = await w.run(['ls-remote', w.url])
-    w.note('refs', ls.stdout.split('\n').sort())
-  }
-)
+conform('ls-remote lists peeled tags', { snapshot: false }, async (w) => {
+  await w.seed()
+  const ls = await w.run(['ls-remote', w.url])
+  w.note('refs', ls.stdout.split('\n').sort())
+})
 
 conform('ls-remote with patterns and --exit-code', { snapshot: false }, async (w) => {
   await w.seed()
@@ -205,14 +267,10 @@ conform('verbosity and progress flags', async (w) => {
 })
 
 // t5601 "clone -q is quiet", t5510, t5523 "push -q": nothing on stderr
-conform(
-  '-q is quiet',
-  { todo: 'the connection spinner and "Latest:" line ignore verbosity (lib/progress.js)' },
-  async (w) => {
-    await w.commit('one')
-    w.note('push -q', (await w.run(['push', '-q', w.url, 'main'])).stderr)
-    const local = path.join(w.dir, 'local')
-    w.note('clone -q', (await w.run(['clone', '-q', w.url, local])).stderr)
-    w.note('fetch -q', (await w.run(['fetch', '-q'], { cwd: local })).stderr)
-  }
-)
+conform('-q is quiet', async (w) => {
+  await w.commit('one')
+  w.note('push -q', (await w.run(['push', '-q', w.url, 'main'])).stderr)
+  const local = path.join(w.dir, 'local')
+  w.note('clone -q', (await w.run(['clone', '-q', w.url, local])).stderr)
+  w.note('fetch -q', (await w.run(['fetch', '-q'], { cwd: local })).stderr)
+})
