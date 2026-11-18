@@ -55,6 +55,7 @@ const main = async () => {
   const gip = new Gip({
     remote,
     dir,
+    bootstrap: process.env.GIP_BOOTSTRAP?.split(','),
     ...config
   })
 

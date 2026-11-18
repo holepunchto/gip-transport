@@ -7,6 +7,7 @@ async function runTests() {
 
   test.pause()
 
+  await import('./bootstrap.js')
   await import('./local.js')
   await import('./push.js')
 
