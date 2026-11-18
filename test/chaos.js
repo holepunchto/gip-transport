@@ -28,9 +28,6 @@ const CLONE_MARKERS = [
   'Gip [DEBUG]: Done rebuilding'
 ]
 
-// A kill while the helper writes objects corrupts the local repo, see the todo below.
-const FETCH_MARKERS = CLONE_MARKERS.filter((marker) => !marker.includes('Rebuilding repo'))
-
 test(
   'SIGKILL mid-push leaves every ref at its old or its new oid',
   { timeout: TIMEOUT },
@@ -120,6 +117,11 @@ test(
 // A kill between device-file creating <storage>/CORESTORE and writing it leaves the file empty,
 // and every later open fails with 'Invalid device file, was modified'. The window is a few ms
 // of the first open of a store, so the leftover state is planted instead of raced for.
+//
+// Still a todo: the file is the store's lock (hypercore-storage hands it to rocksdb), so nothing
+// outside device-file can tell a leftover from a first open in flight, and removing it from here
+// could let two processes into one store. The fix is in device-file's verifyDeviceFile: an
+// empty file, once locked, is a file to write.
 test.todo('SIGKILL during the first open of a store leaves it usable', async (t) => {
   const ctx = await create(t)
   const repo = await ctx.repo('repo')
@@ -155,7 +157,7 @@ test(
     const tracking = async () =>
       (await ctx.ok(['rev-parse', 'refs/remotes/origin/main'], { cwd: clone })).trim()
 
-    for (const [i, point] of killPoints('fetch', FETCH_MARKERS).entries()) {
+    for (const [i, point] of killPoints('fetch', CLONE_MARKERS).entries()) {
       await seeder.close()
       const next = await ctx.commit(repo, `more-${i}`, rand, { files: 20, size: 65536 })
       await ctx.ok(['push', url, ...REFSPECS], { cwd: repo })
@@ -178,10 +180,9 @@ test(
   }
 )
 
-// gip-remote's toDisk writes loose objects in place (isomorphic-git writeObject), not through a
-// temp file, and never rewrites one that exists. A kill mid-write leaves an empty or short
-// object file that fsck rejects, and later fetches keep it.
-test.todo(
+// A loose object has to appear whole or not at all: an empty or short one fails fsck, and no
+// later fetch rewrites a file that exists.
+test(
   'SIGKILL while a fetch writes objects leaves the local repo valid',
   { timeout: TIMEOUT },
   async (t) => {
@@ -333,10 +334,10 @@ test('a clone with zero peers fails cleanly', { timeout: TIMEOUT }, async (t) =>
   t.absent(fs.existsSync(dest), 'nothing left behind')
 })
 
-// Readers announce themselves by default (seedReadOnly) and a killed helper never unannounces.
-// Measured on the testnet: 0.4s to connect with none dead, 4.4s with 4, 8.4s with 12, 36s
-// with 16.
-test.todo('peers that crashed do not slow a later clone', { timeout: TIMEOUT }, async (t) => {
+// A killed process never unannounces, and every dead announcement costs the next reader a
+// connection attempt: 0.4s to connect on the testnet with none dead, 4.4s with 4, 8.4s with 12,
+// 36s with 16. So the helper, which lives for one command, does not announce.
+test('peers that crashed do not slow a later clone', { timeout: TIMEOUT }, async (t) => {
   const ctx = await create(t)
   const repo = await ctx.repo('repo')
   const { url, storage, link } = await ctx.store('store')
@@ -356,9 +357,9 @@ test.todo('peers that crashed do not slow a later clone', { timeout: TIMEOUT }, 
   t.ok(run.ms < 4000, 'connects as fast as with no dead peers')
 })
 
-// openRemote awaits core.download().done() with no timeout and the swarm does not look the
-// topic up again, so the clone sits at 'Connecting...' long after another seeder is online.
-test.todo(
+// Hyperswarm does not look the topic up again for minutes, so a reader left without peers has
+// to: another seeder may be online long before then.
+test(
   'a clone whose only seeder leaves mid-download finishes from a later seeder or fails',
   { timeout: TIMEOUT },
   async (t) => {
@@ -448,9 +449,9 @@ test(
   }
 )
 
-// lib/gip.js push() reports a failed ref as `error <oid> <ref> <message>`. git wants
-// `error <ref> <message>`, warns about an unexpected status and exits 0.
-test.todo('a push whose write fails exits non-zero', { timeout: TIMEOUT }, async (t) => {
+// git only takes `error <ref> <message>` for a failed ref: any other shape is a warning about
+// an unexpected status, and exit 0.
+test('a push whose write fails exits non-zero', { timeout: TIMEOUT }, async (t) => {
   const ctx = await create(t)
   const rand = random('push-error')
   const repo = await ctx.repo('repo')

@@ -14,7 +14,6 @@ const BIN = path.join(__dirname, '..', '..', 'bin.js')
 const SEED = Number(process.env.GIP_CHAOS_SEED || 1)
 const ITERS = Number(process.env.GIP_CHAOS_ITERS || 0)
 
-// Every killed helper stays announced and slows each later connect, see the todo in chaos.js.
 const HANG = 30_000 + ITERS * 3_000
 
 module.exports = { create, killPoints, random, ITERS }
@@ -206,9 +205,9 @@ async function create(t) {
     })
   }
 
-  // ref → oid as the helper lists them, symrefs left out.
+  // ref → oid as the helper lists them, symrefs and peeled tags left out.
   async function refs(url) {
-    const out = await ok(['ls-remote', url])
+    const out = await ok(['ls-remote', '--refs', url])
     const map = {}
     for (const line of out.split('\n')) {
       const [oid, ref] = line.split('\t')

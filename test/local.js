@@ -554,6 +554,53 @@ test('seedReadOnly off means non-writable cores join as client-only', async (t) 
   t.is(entry.discovery.isServer, false, 'not announced when setting is off')
 })
 
+test('openRemote with announce off keeps a writable core off the swarm', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+  const dir = await tmp(t)
+
+  const setupStore = new Corestore(dir)
+  const setup = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store: setupStore })
+  await setup.ready()
+  const { url } = await setup.createRemote('mine')
+  await setup.close()
+  await setupStore.close()
+
+  const store = new Corestore(dir)
+  t.teardown(() => store.close())
+  const db = new GipLocalDB({ swarm: new Hyperswarm({ bootstrap }), store })
+  t.teardown(() => db.close())
+  await db.ready()
+
+  const remote = await db.openRemote(url, { announce: false })
+  t.ok(remote.core.writable, 'core is writable (we own it)')
+  t.is(db._joined.size, 0, 'never joined')
+})
+
+test('openRemote with announce off reads a non-writable core as client-only', async (t) => {
+  const { bootstrap } = await createTestnet(3, t.teardown)
+
+  const dbA = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbA.close())
+  await dbA.ready()
+  const remoteA = await dbA.createRemote('shared')
+  await remoteA.push('main', OID_COMMIT, makeTestObjects())
+
+  const dbB = new GipLocalDB({
+    swarm: new Hyperswarm({ bootstrap }),
+    store: await createStore(t)
+  })
+  t.teardown(() => dbB.close())
+  await dbB.ready()
+
+  const remoteB = await dbB.openRemote(remoteA.url, { announce: false })
+  const entry = await dbB._joined.get(remoteA.core.key.toString('hex'))
+  t.is(entry.discovery.isServer, false, 'not announced, seedReadOnly or not')
+  t.alike(await remoteB.getBranchRef('main'), { ref: 'refs/heads/main', oid: OID_COMMIT })
+})
+
 test('a local-only join leaves discovery open to a later join', async (t) => {
   const { bootstrap } = await createTestnet(3, t.teardown)
 
