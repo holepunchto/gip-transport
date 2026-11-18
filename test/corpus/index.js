@@ -32,35 +32,21 @@ const scale = {
   mirrorMaxMB: number('GIP_CORPUS_MIRROR_MAX_MB', QUICK ? 2 : Infinity)
 }
 
-// Known failures, named once. Every case carrying one still runs and is measured.
+// Known differences, named once. Every case carrying one still runs and is measured. Neither
+// is ours to close: the first is git's, the second is how a remote without a server picks HEAD.
 const BUG = {
-  tagTarget:
-    'a tag of a blob or tree is dropped: Remote.push requires a commit ("Expected commit, got blob"), gip-remote index.js _push',
-  mode: 'a tree entry with mode 100664 is unreadable ("Unexpected GitTree entry mode: 100664"), on push and on clone, gip-remote lib/git.js walkTree/treeEntries',
-  unsafePath:
-    'refs whose tree has a .git or dot-dot path are refused ("Unsafe path") where git stores them, and the push still exits 0',
-  empty:
-    'an empty remote cannot be listed or cloned ("Repo not found, peers required"), lib/gip.js list',
-  head: 'HEAD is invented: with the pusher on an unborn branch the remote HEAD becomes the first branch pushed, gip-remote first-push head default',
-  shallow:
-    'a push from a shallow repository is not rejected (file:// answers "shallow update not allowed") and exits 0'
+  noRefs:
+    'a push with nothing to push exits 1 over file:// and 0 through a remote helper: transport-helper.c says "No refs in common and none specified; doing nothing" and returns before the helper is asked',
+  head: 'HEAD is chosen by the remote: with the pusher on an unborn branch it is main, else master, else the first branch pushed, where a bare repository keeps naming the unborn branch'
 }
 
 // libgit2 tests/resources: whole repositories with unusual refs and objects.
 const LIBGIT2 = [
-  [
-    'testrepo.git',
-    'packed-refs, loose and packed objects, tag chains, a tag of a blob',
-    BUG.tagTarget
-  ],
+  ['testrepo.git', 'packed-refs, loose and packed objects, tag chains, a tag of a blob'],
   ['peeled.git', 'packed-refs with peeled tags only'],
   ['short_tag.git', 'annotated tag with no message'],
-  ['deprecated-mode.git', 'tree entry with the deprecated 100664 mode', BUG.mode],
-  [
-    'nasty/.gitted',
-    'tree entries named .git, .GIT, dot-dot and backslash variants',
-    BUG.unsafePath
-  ],
+  ['deprecated-mode.git', 'tree entry with the deprecated 100664 mode'],
+  ['nasty/.gitted', 'tree entries named .git, .GIT, dot-dot and backslash variants'],
   ['win32-forbidden/.gitted', 'paths that are reserved names on Windows'],
   ['icase/.gitted', 'paths that differ only by case'],
   ['unsymlinked.git', 'symlink entries (mode 120000)'],
@@ -69,17 +55,16 @@ const LIBGIT2 = [
   ['typechanges/.gitted', 'a path that changes between blob, tree, symlink and gitlink'],
   ['merge-recursive/.gitted', 'criss-cross merges across many branches'],
   ['revwalk.git', 'branching history built for revision walks'],
-  ['shallow.git', 'shallow source repository (grafted history)', BUG.shallow],
+  ['shallow.git', 'shallow source repository (grafted history) with no branch or tag', BUG.noRefs],
   ['namespace.git', 'refs under refs/namespaces, HEAD on a branch that does not exist', BUG.head]
 ]
 
 // go-git-fixtures .git tarballs: repositories as left by real git operations.
 const GO_GIT_DOT_GIT = [
-  ['bf3fedcc8e20fd0dec9172987ceea0038d17b516', 'empty: no refs, no objects', BUG.empty],
+  ['bf3fedcc8e20fd0dec9172987ceea0038d17b516', 'empty: no refs, no objects', BUG.noRefs],
   [
     'c0c7c57ab1753ddbd26cc45322299ddd12842794',
-    'tags: light, annotated, tag of tag, tag of tree and blob',
-    BUG.tagTarget
+    'tags: light, annotated, tag of tag, tag of tree and blob'
   ],
   [
     '78c5fb882e76286d8201016cffee63ea7060a0c2',
@@ -136,7 +121,7 @@ for (const name of sources.mirrors(scale.mirrors, scale.mirrorMaxMB)) {
   )
 }
 
-corpus(`git/git ${scale.gitTag}`, { why: 'deep history', bug: BUG.mode }, (dir) =>
+corpus(`git/git ${scale.gitTag}`, { why: 'deep history' }, (dir) =>
   sources.gitGit(path.join(dir, 'src.git'), scale.gitTag)
 )
 

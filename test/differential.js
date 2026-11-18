@@ -12,7 +12,7 @@ const process = require('process')
 const createTestnet = require('hyperdht/testnet')
 
 const generate = require('./helpers/ops')
-const { KNOWN, createWorld, destroyWorld, run, script } = require('./helpers/world')
+const { KNOWN, FIXED, createWorld, destroyWorld, run, script } = require('./helpers/world')
 
 const OPS = 30
 const SEEDS = [1, 2, 3]
@@ -56,6 +56,16 @@ if (GIP_FUZZ_ITERS) {
 
       if (found) t.comment(await report(attempt, seed, ops, found))
       t.absent(found, `seed ${seed} matches file:// after each of ${ops.length} ops`)
+    })
+  }
+
+  for (const { bug, repro } of FIXED) {
+    test(`fixed: ${bug}`, async (t) => {
+      const attempt = await setup(t)
+      const found = await attempt(repro, { strict: true })
+
+      if (found) t.comment([found.kind, ...found.detail].join('\n'))
+      t.absent(found, 'matches file://')
     })
   }
 

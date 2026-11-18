@@ -12,12 +12,12 @@ const { GipLocalDB } = require('../../lib/db')
 const ROOT = path.join(__dirname, '..', '..')
 const EPOCH = 1700000000
 
-// A file:// remote refuses to delete the branch its HEAD names; the pear remote has no such rule.
-const ORACLE = `git init -q --bare -b main oracle.git
-git -C oracle.git config receive.denyDeleteCurrent ignore`
+const ORACLE = `git init -q --bare -b main oracle.git`
 
-// origin/HEAD is kept out of it: the pear remote's HEAD follows the pusher's HEAD while a bare
-// repo's stays on its initial branch, which is an allowed difference.
+// The pear remote's HEAD follows the pusher's HEAD while a bare repo's stays on its initial
+// branch, which is an allowed difference. Both refuse to delete the branch HEAD names, so
+// after every write the oracle's HEAD is moved to where the pear remote's went (see followHead),
+// and origin/HEAD is kept out of the comparison.
 const SETUP = `for r in work second; do
   git init -q -b main $r && git -C $r remote add origin "$REMOTE"
   git -C $r config remote.origin.followRemoteHEAD never
@@ -28,24 +28,20 @@ mkdir clones`
 const COMMIT = ['work', null, 'echo one > f && git add -A && git commit -q -m one']
 const PUSH = ['work', 'write', 'git push -q origin main']
 
-// Bugs found so far, each with the smallest op sequence that shows it. Unless strict, the
-// generator leaves out the ops in `avoid`, `setup` runs once and `mend` after every remote op on
-// both sides, and the comparison looks away as noted, so a run gets past these and on to the
-// next bug.
-exports.KNOWN = [
+// Known bugs, each with the smallest op sequence that shows it: { bug, repro, avoid, setup,
+// mend }. Unless strict, the generator leaves out the ops in `avoid`, `setup` runs once and
+// `mend` after every remote op on both sides, so a run gets past them and on to the next bug.
+exports.KNOWN = []
+
+// Bugs this harness found, kept as the sequences that showed them.
+exports.FIXED = [
   {
-    // The helper answers "Repo not found, peers required". Not strict: a tag nothing ever deletes
-    // keeps the remote from running empty.
     bug: 'a remote without refs cannot be listed, fetched or cloned',
-    repro: [['second', 'read', 'git fetch -q origin']],
-    avoid: [],
-    setup: `git init -q keep && git -C keep commit -q --allow-empty -m keep && git -C keep tag keep && git -C keep push -q "$REMOTE" keep`
+    repro: [['second', 'read', 'git fetch -q origin']]
   },
   {
     bug: 'fetch force-writes every fetched branch into the local refs/heads',
-    repro: [COMMIT, PUSH, ['second', 'read', 'git fetch -q origin']],
-    avoid: ['work-fetch', 'work-pull'],
-    mend: `git -C second for-each-ref --format="delete %(refname)" refs/heads | grep -v "/scratch$" | git -C second update-ref --stdin`
+    repro: [COMMIT, PUSH, ['second', 'read', 'git fetch -q origin']]
   },
   {
     bug: 'a push the remote should refuse as non-fast-forward overwrites the branch',
@@ -59,41 +55,31 @@ exports.KNOWN = [
       ],
       ['work', null, 'echo three > f && git add -A && git commit -q -m three'],
       PUSH
-    ],
-    avoid: ['second-push']
+    ]
   },
   {
     bug: 'a bare or mirror clone fails with "remote did not send all necessary objects"',
-    repro: [COMMIT, PUSH, ['', 'read', 'git clone -q --bare "$REMOTE" clones/c1']],
-    avoid: ['clone-bare', 'clone-mirror']
+    repro: [COMMIT, PUSH, ['', 'read', 'git clone -q --bare "$REMOTE" clones/c1']]
   },
   {
     bug: 'a tag on a tree is not stored, and the push still reports success',
-    repro: [COMMIT, PUSH, ['work', 'write', 'git tag t "HEAD^{tree}" && git push -q origin t']],
-    avoid: ['tag-tree']
+    repro: [COMMIT, PUSH, ['work', 'write', 'git tag t "HEAD^{tree}" && git push -q origin t']]
   },
   {
     bug: 'HEAD is listed for push, so pushing a detached HEAD lands on a ref named HEAD',
-    repro: [COMMIT, PUSH, ['work', 'write', 'git checkout -q --detach && git push -q origin HEAD']],
-    avoid: ['push-head']
+    repro: [COMMIT, PUSH, ['work', 'write', 'git checkout -q --detach && git push -q origin HEAD']]
   },
   {
-    // So fetch and single-branch clone do not follow them. Not strict: ls-remote runs with --refs
-    // and `second` stops following tags.
     bug: 'annotated tags are listed without their peeled ^{} entry',
-    repro: [COMMIT, PUSH, ['work', 'write', 'git tag -a -m t t && git push -q origin t']],
-    avoid: ['clone-single-branch'],
-    mend: `git -C second config remote.origin.tagOpt --no-tags`
+    repro: [COMMIT, PUSH, ['work', 'write', 'git tag -a -m t t && git push -q origin t']]
   },
   {
     bug: 'when git gives up early the helper never exits and keeps the store locked',
-    repro: [COMMIT, PUSH, ['second', 'read', 'git fetch -q origin nope'], PUSH],
-    avoid: [],
-    mend: `while pkill -9 -f "storage=$T/store"; do sleep 0.05; done`
+    repro: [COMMIT, PUSH, ['second', 'read', 'git fetch -q origin nope'], PUSH]
   }
 ]
 
-for (const known of exports.KNOWN) {
+for (const known of exports.KNOWN.concat(exports.FIXED)) {
   known.repro = known.repro.map(([dir, remote, cmd], tick) => {
     return { name: 'known', dir, cmd, remote, tick }
   })
@@ -126,8 +112,8 @@ done`
 
 // Allowed differences: HEAD (see SETUP), and the pear remote lists refs in store order, not
 // sorted by name.
-const remoteState = (strict) => `echo "## ls-remote"
-git ls-remote ${strict ? '' : '--refs '}"$REMOTE" 2>/dev/null | awk '$2 != "HEAD"' | sort -k 2
+const REMOTE = `echo "## ls-remote"
+git ls-remote "$REMOTE" 2>/dev/null | awk '$2 != "HEAD"' | sort -k 2
 rm -rf .fresh
 echo "## fresh clone"
 git clone -q "$REMOTE" .fresh >/dev/null 2>&1; echo "clone $?"
@@ -181,14 +167,12 @@ exports.createWorld = async function createWorld(root, bootstrap, strict) {
   await sh.exec('sh', ['-c', ORACLE], { cwd: root, env })
   for (const side of world.sides) fs.mkdirSync(side.dir)
   await both(world, SETUP)
-  if (!strict) await both(world, STEER)
+  if (!strict && STEER) await both(world, STEER)
 
   return world
 }
 
-// Kills any helper that outlived its git (see KNOWN): it would keep this process alive too.
 exports.destroyWorld = async function destroyWorld(world) {
-  await sh.exec('pkill', ['-9', '-f', `storage=${world.env.T}/store`])
   await fs.promises.rm(world.env.T, { recursive: true, force: true })
 }
 
@@ -200,7 +184,8 @@ exports.run = async function run(world, ops, { strict, from = 0 } = {}) {
     const [oracle, pear] = await both(world, op.cmd, op)
     const stderr = { oracle: oracle.stderr.toString(), pear: pear.stderr.toString() }
 
-    if (op.remote && !strict) await both(world, MEND)
+    if (op.remote && !strict && MEND) await both(world, MEND)
+    if (op.remote === 'write') await followHead(world)
     if (step < from) continue
 
     if ((oracle.status === 0) !== (pear.status === 0) && !excused(stderr)) {
@@ -214,11 +199,23 @@ exports.run = async function run(world, ops, { strict, from = 0 } = {}) {
     const local = compare(await both(world, LOCAL))
     if (local) return { step, op, ...local, stderr }
 
-    const remote = compare(await both(world, remoteState(strict)))
+    const remote = compare(await both(world, REMOTE))
     if (remote) return { step, op, ...remote, stderr }
   }
 
   return null
+}
+
+async function followHead(world) {
+  const [oracle, pear] = world.sides
+  const ls = await sh.exec('git', ['ls-remote', '--symref', pear.remote, 'HEAD'], {
+    env: world.env
+  })
+  const head = /^ref: (\S+)\tHEAD$/m.exec(ls.stdout.toString())
+  if (!head) return
+
+  const bare = oracle.remote.slice('file://'.length)
+  await sh.exec('git', ['-C', bare, 'symbolic-ref', 'HEAD', head[1]], { env: world.env })
 }
 
 // Allowed differences in exit status: a push that matches no refs dies in git's own transport but
@@ -264,12 +261,17 @@ at() {
 status() {
   if [ $? = 0 ]; then echo "step $1 $2: ok"; else echo "step $1 $2: failed"; fi
 ${strict ? '' : MEND}
+  if [ $side = pear ]; then
+    git ls-remote --symref "$REMOTE" HEAD 2>/dev/null | awk '/^ref:/ { print $2 }' > "$T/head.$1"
+  elif [ -s "$T/head.$1" ]; then
+    git -C "$T/oracle.git" symbolic-ref HEAD "$(cat "$T/head.$1")"
+  fi
 }
 ops() {
 ${steps.join('\n')}
 }
 
-for side in oracle pear; do
+for side in pear oracle; do
   mkdir "$T/$side" && cd "$T/$side"
   if [ $side = oracle ]; then export REMOTE="file://$T/oracle.git"; else export REMOTE="$PEAR"; fi
   {
@@ -277,7 +279,7 @@ ${SETUP}
 ${strict ? '' : STEER}
 ops
 ${LOCAL}
-${remoteState(strict)}
+${REMOTE}
   } > "$T/$side.out" 2> "$T/$side.err"
 done
 

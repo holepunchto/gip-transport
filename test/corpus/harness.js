@@ -300,7 +300,9 @@ async function verify(ctx, entry) {
   if (entry.file.clone.status !== 0 || entry.pear.clone.status !== 0) return
 
   differLines(entry, 'cloned refs', seen.file.refs, seen.pear.refs)
-  differ(entry, 'fsck --strict exit', entry.file.clone.fsck, entry.pear.clone.fsck)
+  // The exit code is a bit per place a fault was found in (1 loose object, 4 pack), and the two
+  // clones need not store an object the same way. The faults themselves are compared below.
+  differ(entry, 'fsck --strict passes', entry.file.clone.fsck === 0, entry.pear.clone.fsck === 0)
   differLines(entry, 'fsck --strict output', seen.file.fsck, seen.pear.fsck)
 
   const lists = [path.join(ctx.dir, 'file-objects'), path.join(ctx.dir, 'pear-objects')]
