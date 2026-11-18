@@ -10,6 +10,7 @@ const { GipLocalDB } = require('../../lib/db')
 
 const BIN = path.join(__dirname, '..', '..', 'bin.js')
 const TIMEOUT = Number(process.env.GIP_CORPUS_TIMEOUT_MIN || 30) * 60 * 1000
+const MAX_RSS_MB = Number(process.env.GIP_CORPUS_MAX_RSS_MB || 300)
 const REPORT =
   process.env.GIP_CORPUS_REPORT || path.join(os.tmpdir(), `gip-corpus-${Date.now()}.json`)
 
@@ -247,9 +248,8 @@ async function verify(ctx, entry) {
     const ls = await exec('git', ['ls-remote', '--symref', remote.url], { env: ctx.env })
     const lines = ls.stdout.split('\n').filter(Boolean)
     m.lsRemote = { status: ls.status, ms: ls.ms, refs: lines.length }
-    // Allowlisted: the helper's `list` does not advertise peeled tags (refs/tags/x^{}).
     m.lsRemote.peeled = lines.filter((line) => line.endsWith('^{}')).length
-    s.ls = lines.filter((line) => !line.endsWith('^{}')).join('\n')
+    s.ls = lines.join('\n')
 
     // Never check out: fixture trees carry hostile paths, and checkout is not the transport.
     const clone = path.join(ctx.dir, `${kind}-clone`)
@@ -286,6 +286,15 @@ async function verify(ctx, entry) {
   entry.file.objects = await looseAndPacked(ctx.remotes.file.disk)
   Object.assign(entry.pear, await storeCounts(ctx.remotes.pear.disk))
   entry.diskRatio = Number((entry.pear.diskKB / entry.file.diskKB).toFixed(2))
+
+  // Memory must not grow with the repository: the helper streams in both directions.
+  entry.maxRssMB = MAX_RSS_MB
+  for (const step of ['pushAll', 'pushTags', 'clone']) {
+    const rss = entry.pear[step]?.rssMB
+    if (rss > MAX_RSS_MB) {
+      entry.diffs.push(`peak RSS: ${step} took ${rss} MB, over the ${MAX_RSS_MB} MB bound`)
+    }
+  }
 
   differ(entry, 'ls-remote exit', entry.file.lsRemote.status, entry.pear.lsRemote.status)
   differLines(entry, 'ls-remote', seen.file.ls, seen.pear.ls)
