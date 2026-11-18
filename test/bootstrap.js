@@ -26,6 +26,11 @@ test('helper with GIP_BOOTSTRAP clones from a peer on a testnet', async (t) => {
     ...process.env,
     PATH: `${bin}:${process.env.PATH}`,
     GIP_NO_UPDATES: '1',
+    GIT_CONFIG_COUNT: '2',
+    GIT_CONFIG_KEY_0: 'gc.auto',
+    GIT_CONFIG_VALUE_0: '0',
+    GIT_CONFIG_KEY_1: 'maintenance.auto',
+    GIT_CONFIG_VALUE_1: 'false',
     GIP_BOOTSTRAP: bootstrap.map((node) => `${node.host}:${node.port}`).join(',')
   }
 
