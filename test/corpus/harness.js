@@ -72,11 +72,30 @@ function sh(script, args, opts) {
   return exec('sh', ['-c', script, 'sh', ...args], opts)
 }
 
-// Wall time, exit status and the peak RSS of the largest process in the tree
-// (the helper for git+pear, pack-objects/index-pack for file).
+// Wall time, exit status and two peaks: rssMB is the largest process in the tree, git's own
+// included (rev-list and cat-file map the packs they read, pack-objects for file), helperRssMB
+// is the helper alone, sampled, since it is the one process whose memory is ours to bound.
 async function measure(args, opts) {
   const flag = os.platform() === 'darwin' ? '-l' : '-v'
+  const pids = opts.env.GIP_CORPUS_PIDS
+  if (pids) fs.writeFileSync(pids, '')
+
+  let helperKB = 0
+  let sampling = false
+  const sampler = setInterval(async () => {
+    if (sampling || !pids) return
+    sampling = true
+    const pid = fs.readFileSync(pids, 'utf8').trim().split('\n').pop()
+    if (pid) {
+      const ps = await exec('ps', ['-o', 'rss=', '-p', pid])
+      helperKB = Math.max(helperKB, Number(ps.stdout))
+    }
+    sampling = false
+  }, 100)
+
   const result = await exec('/usr/bin/time', [flag, 'git', ...args], opts)
+  clearInterval(sampler)
+
   const bytes = result.stderr.match(/(\d+)\s+maximum resident set size/)
   const kbytes = result.stderr.match(/Maximum resident set size \(kbytes\): (\d+)/)
   const rss = bytes ? Number(bytes[1]) : kbytes ? Number(kbytes[1]) * 1024 : null
@@ -85,13 +104,14 @@ async function measure(args, opts) {
     status: result.status,
     ms: result.ms,
     rssMB: rss && Math.round(rss / 1024 / 1024),
+    helperRssMB: Math.round(helperKB / 1024),
     stdout: result.stdout,
     stderr: result.stderr.replace(/^\s+[\d.]+ real[\s\S]*$/m, '')
   }
 }
 
 function summary(step) {
-  return { status: step.status, ms: step.ms, rssMB: step.rssMB }
+  return { status: step.status, ms: step.ms, rssMB: step.rssMB, helperRssMB: step.helperRssMB }
 }
 
 async function setup(t) {
@@ -101,9 +121,17 @@ async function setup(t) {
   const bin = path.join(dir, 'bin')
   fs.mkdirSync(bin)
   const shim = path.join(bin, 'git-remote-git+pear')
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`)
+  // exec keeps the pid, so the file names the helper itself for measure() to sample.
+  fs.writeFileSync(
+    shim,
+    `#!/bin/sh\necho $$ >> "$GIP_CORPUS_PIDS"\nexec "${process.execPath}" "${BIN}" "$@"\n`
+  )
   fs.chmodSync(shim, 0o755)
-  const env = { ...ENV, PATH: `${bin}:${process.env.PATH}` }
+  const env = {
+    ...ENV,
+    PATH: `${bin}:${process.env.PATH}`,
+    GIP_CORPUS_PIDS: path.join(dir, 'helper.pids')
+  }
 
   const bare = path.join(dir, 'file.git')
   await git(['init', '-q', '--bare', bare])
@@ -287,10 +315,10 @@ async function verify(ctx, entry) {
   Object.assign(entry.pear, await storeCounts(ctx.remotes.pear.disk))
   entry.diskRatio = Number((entry.pear.diskKB / entry.file.diskKB).toFixed(2))
 
-  // Memory must not grow with the repository: the helper streams in both directions.
+  // The helper's memory must not grow with the repository: it streams in both directions.
   entry.maxRssMB = MAX_RSS_MB
   for (const step of ['pushAll', 'pushTags', 'clone']) {
-    const rss = entry.pear[step]?.rssMB
+    const rss = entry.pear[step]?.helperRssMB
     if (rss > MAX_RSS_MB) {
       entry.diffs.push(`peak RSS: ${step} took ${rss} MB, over the ${MAX_RSS_MB} MB bound`)
     }

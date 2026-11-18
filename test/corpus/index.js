@@ -14,7 +14,7 @@ const synth = require('./synth')
 //   GIP_CORPUS_CACHE            where pinned downloads are kept
 //   GIP_CORPUS_MIRROR           directory of bare clones to reuse as real repos
 //   GIP_CORPUS_REPORT           where the JSON report goes
-//   GIP_CORPUS_MAX_RSS_MB       peak RSS a push or clone may reach, default 300
+//   GIP_CORPUS_MAX_RSS_MB       peak RSS the helper may reach in a push or clone, default 300
 //   GIP_CORPUS_TIMEOUT_MIN      per git command, default 30
 const ENABLED = process.env.GIP_CORPUS === '1'
 const QUICK = process.env.GIP_CORPUS_QUICK === '1'
@@ -208,7 +208,7 @@ function line(entry) {
     pushMs: [entry.file.pushAll?.ms, entry.pear.pushAll?.ms],
     cloneMs: [entry.file.clone?.ms, entry.pear.clone?.ms],
     diskKB: [entry.file.diskKB, entry.pear.diskKB],
-    rssMB: [entry.pear.pushAll?.rssMB, entry.pear.clone?.rssMB]
+    helperRssMB: [entry.pear.pushAll?.helperRssMB, entry.pear.clone?.helperRssMB]
   }
 }
 
