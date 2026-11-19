@@ -5,6 +5,7 @@ const readline = require('readline')
 const { isBare } = require('which-runtime')
 const { Gip } = require('./lib/gip.js')
 const stdout = require('./lib/stdout')
+const parseArgs = require('./lib/args')
 
 const ignorePipeError = (err) => {
   if (err.code !== 'ESPIPE' && err.code !== 'EPIPE') throw err
@@ -12,31 +13,15 @@ const ignorePipeError = (err) => {
 if (process.stdin.on) process.stdin.on('error', ignorePipeError)
 if (process.stdout.on) process.stdout.on('error', ignorePipeError)
 
-const argv = process.argv.slice(0)
-const remote = argv[2]
-let url = argv[3]
+const args = parseArgs(process.argv)
 
-if (!url) {
+if (!args) {
   console.error('Remote url required')
   process.exit(1)
 }
 
-const config = {}
-try {
-  if (!url.includes('git+pear://')) {
-    const urlIdx = argv.findIndex((arg) => arg.startsWith('git+pear://'))
-    url = argv[urlIdx]
-
-    if (!url) {
-      console.error('Remote url could not be found in args')
-      process.exit(1)
-    }
-  }
-
-  config.link = url
-} catch (error) {
-  throw new Error(`Invalid remote url: ${url}: ${error.message}`)
-}
+const { remote } = args
+const config = { link: args.url }
 
 const capabilities = () => {
   stdout.write('option\nfetch\npush\nlist\n\n')
