@@ -59,6 +59,31 @@ jobs:
           name: ${{ matrix.host }}
           path: out/by-arch/app/${{ matrix.host }}/
 
+  git:
+    name: git suite ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            host: linux-x64
+          - os: macos-latest
+            host: darwin-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Setup repo
+        uses: holepunchto/actions/.github/steps/setup-repo@v1
+
+      - name: Install w/ dev deps
+        run: npm install
+
+      - name: Install Bare Runtime
+        run: npm i -g bare
+
+      - name: Test
+        run: npm run test:git
+
   package:
     name: Package by-arch
     needs: build
