@@ -6,6 +6,8 @@ const process = require('process')
 const { spawnSync } = require('child_process')
 const { isWindows } = require('which-runtime')
 
+const Id = require('hypercore-id-encoding')
+
 const { GipLocalDB } = require('../lib/db')
 
 const BIN = path.join(__dirname, '..', 'bin.js')
@@ -77,7 +79,7 @@ async function setup(t) {
   let db = new GipLocalDB({ dir: store })
   await db.ready()
   const remote = await db.createRemote('t')
-  const url = `${remote.url}?storage=${store}`
+  const url = `git+pear://${Id.encode(remote.key)}/t?storage=${store}`
   await db.close()
 
   // Single-process store — callers must finish pushing before they look inside.
@@ -88,15 +90,28 @@ async function setup(t) {
     return db
   }
 
-  return { dir, repo, url, git, write, openStore }
+  return { dir, repo, url, store, git, write, openStore }
 }
 
 function cloneAndLog(ctx, name, ref) {
+  return cloneUrlAndLog(ctx, ctx.url, name, ref)
+}
+
+function cloneUrlAndLog(ctx, url, name, ref) {
   const dest = path.join(ctx.dir, name)
   const args = ['clone', '-q']
   if (ref) args.push('--branch', ref)
-  ctx.git([...args, ctx.url, dest])
+  ctx.git([...args, url, dest])
   return ctx.git(['log', '--oneline', '--format=%s'], { cwd: dest }).trim().split('\n')
+}
+
+async function versionedUrl(ctx) {
+  const db = await ctx.openStore()
+  await db.openRemotes()
+  const { core } = db.getRemote('t')
+  const url = `git+pear://${core.fork}.${core.length}.${Id.encode(core.key)}/t?storage=${ctx.store}`
+  await db.close()
+  return url
 }
 
 test('push and clone round-trip', async (t) => {
@@ -236,4 +251,46 @@ test('multi-megabyte payloads stream through the parser intact', async (t) => {
   cloneAndLog(ctx, 'clone')
   const cloned = fs.readFileSync(path.join(ctx.dir, 'clone', 'big.bin'))
   t.is(Buffer.compare(cloned, big), 0)
+})
+
+test('a versioned link clones the version it names, not latest', async (t) => {
+  const ctx = await setup(t)
+  ctx.git(['push', ctx.url, '--all'])
+
+  const pinned = await versionedUrl(ctx)
+
+  ctx.write('b.txt', 'second\n')
+  ctx.git(['add', '-A'])
+  ctx.git(['commit', '-qm', 'two'])
+  ctx.git(['push', ctx.url, '--all'])
+
+  t.alike(cloneAndLog(ctx, 'latest'), ['two', 'one'], 'the unversioned link follows the log')
+
+  t.alike(cloneUrlAndLog(ctx, pinned, 'pinned'), ['one'], 'the versioned link stayed put')
+  t.absent(fs.existsSync(path.join(ctx.dir, 'pinned', 'b.txt')), 'later commit is not in the pin')
+})
+
+test('a versioned link refuses a push', async (t) => {
+  const ctx = await setup(t)
+  ctx.git(['push', ctx.url, '--all'])
+
+  const pinned = await versionedUrl(ctx)
+
+  ctx.write('b.txt', 'second\n')
+  ctx.git(['add', '-A'])
+  ctx.git(['commit', '-qm', 'two'])
+
+  t.exception(() => ctx.git(['push', pinned, '--all']), /pinned to 0\.\d+/)
+
+  t.alike(cloneAndLog(ctx, 'clone'), ['one'], 'the log is unchanged')
+})
+
+test('a versioned link that the log cannot satisfy fails', async (t) => {
+  const ctx = await setup(t)
+  ctx.git(['push', ctx.url, '--all'])
+
+  const pinned = await versionedUrl(ctx)
+  const ahead = pinned.replace(/git\+pear:\/\/0\.\d+\./, 'git+pear://0.9999.')
+
+  t.exception(() => cloneUrlAndLog(ctx, ahead, 'ahead'), /Version not available/)
 })

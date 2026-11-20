@@ -9,6 +9,7 @@ async function runTests() {
 
   await import('./args.js')
   await import('./local.js')
+  await import('./pinned.js')
   await import('./push.js')
 
   test.resume()
