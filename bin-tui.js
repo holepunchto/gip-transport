@@ -89,7 +89,9 @@ const newRepo = command(
     const name = newRepo.args.name
     const remote = await db.createRemote(name)
 
-    console.log(`Repository ${green(name)} created ${remote.url.replace('0.0.', '')}`)
+    const url = `git+pear://${Id.encode(remote.key)}/${name}`
+
+    console.log(`Repository ${green(name)} created ${url}`)
 
     await db.close()
   }
@@ -118,9 +120,10 @@ const listRepos = command(
           const entry = await db.getCore(name, { server: false, client: false })
           if (!entry) return null
           const { core, key } = entry
-          const len = core.length
-          const url = `git+pear://0.${len}.${Id.encode(key)}/${name}`
-          return { name, url }
+          const id = Id.encode(key)
+          const url = `git+pear://${id}/${name}`
+          const verlink = `git+pear://${core.fork}.${core.length}.${id}/${name}`
+          return { name, url, verlink }
         })
       )
       console.log(JSON.stringify(results.filter((r) => r !== null)))
@@ -138,7 +141,7 @@ const listRepos = command(
         const { core, key } = entry
         const peers = core.peers.length
         const len = core.length
-        const url = `git+pear://0.${len}.${Id.encode(key)}/${name}`
+        const url = `git+pear://${Id.encode(key)}/${name}`
         return `${green('*')} ${name}  ${dim(`${len} blocks · ${peers} peer${peers === 1 ? '' : 's'} · ${url}`)}`
       }
     )
