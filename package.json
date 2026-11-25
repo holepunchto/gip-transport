@@ -133,7 +133,7 @@
     "compact-encoding-struct": "^1.3.0",
     "corestore": "^7.11.1",
     "fs-native-extensions": "^1.5.4",
-    "gip-remote": "github:holepunchto/gip-remote#versioned-links",
+    "gip-remote": "^2.4.0",
     "graceful-goodbye": "^1.3.3",
     "hyperbee2": "^2.11.0",
     "hypercore-crypto": "^3.7.0",
